@@ -172,6 +172,20 @@ NEXT_PUBLIC_REGISTRY_CHAIN_ID=1952
 NEXT_PUBLIC_REGISTRY_RPC_URL=https://testrpc.xlayer.tech
 ```
 
+For autonomous agent demos and SDK auto-payment:
+
+```bash
+AGENT_PAYMENT_KEY=0x...
+```
+
+To add it interactively without showing the key in your terminal, run this from the `watchtower` directory:
+
+```bash
+printf "Enter AGENT_PAYMENT_KEY (typing hidden): " && read -s val && echo && echo "AGENT_PAYMENT_KEY=$val" >> "$PWD/.env.local" && echo "Saved."
+```
+
+The agent payment wallet needs both the configured ERC-20 payment token and native gas on the active payment network.
+
 Never commit a real private key.
 
 ### Run Locally
@@ -215,6 +229,11 @@ try {
 ```
 
 If `paymentPrivateKey` is configured, the SDK automatically handles a `402` challenge by sending the ERC-20 payment transaction and retrying with the settlement hash.
+
+Payment-related SDK errors:
+
+- `WatchTowerPaymentRequiredError`: no `paymentPrivateKey` was configured, so the caller must handle the payment challenge manually.
+- `WatchTowerPaymentFundingError`: the configured payment wallet does not have enough accepted ERC-20 balance or native gas token to settle the x402-style payment.
 
 Deep scan:
 
@@ -310,17 +329,30 @@ Query params:
 
 ## Demo Workflows
 
+The SDK demos load `.env.local` automatically through `demo/watchtower-demo-config.js`. For auto-payment demos, configure:
+
+```bash
+AGENT_PAYMENT_KEY=0x...
+WATCHTOWER_API_URL=http://localhost:3000
+```
+
+The wallet behind `AGENT_PAYMENT_KEY` must hold the configured payment token and enough native gas on the active payment network.
+
 Protected SDK agent:
 
 ```bash
 node demo/protected-agent.js
 ```
 
+This scans the deployed X Layer Testnet malicious token and should show the agent blocking execution when WatchTower returns a high-risk verdict.
+
 Deep scan API demo:
 
 ```bash
 node demo/deep-scan-agent.js
 ```
+
+This uses the SDK deep-scan path and demonstrates automatic x402-style settlement before generating a public report.
 
 MCP demo:
 

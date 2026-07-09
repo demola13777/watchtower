@@ -1,15 +1,11 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { WatchTowerClient, WatchTowerAbortError } = require("../packages/watchtower-sdk/src/index.js");
-
-// Initialize WatchTower with a configurable threshold.
-// An arbitrage bot might set threshold: 40 (very cautious).
-// A yield optimizer might set threshold: 80 (more tolerant).
-const watchTower = new WatchTowerClient({
-  apiUrl: "http://localhost:3000",
-  agentWallet: "0x0000000000000000000000000000000000000A99",
-  chainId: "1952",
-  threshold: 60, // Block anything above 60
-});
+/* eslint-disable @typescript-eslint/no-require-imports */
+const {
+  WatchTowerClient,
+  WatchTowerAbortError,
+  WatchTowerPaymentFundingError,
+  WatchTowerPaymentRequiredError,
+} = require("../packages/watchtower-sdk/src/index.js");
+const { createAgentConfig } = require("./watchtower-demo-config.js");
 
 // Demo DEX event: a new token pair was just created.
 const NEW_TOKEN_EVENT = {
@@ -20,59 +16,83 @@ const NEW_TOKEN_EVENT = {
 // The dead token from our tests
 const targetToken = NEW_TOKEN_EVENT.tokenAddress;
 
-console.log("🚀 Starting Protected Trading Agent with WatchTower SDK...");
-console.log(`🔧 Kill Switch threshold: 60/100`);
-console.log("📡 Listening for new token pairs on Dex...");
+async function main() {
+  const agentConfig = await createAgentConfig();
 
-setTimeout(async () => {
-  console.log(`\n⚠️  NEW PAIR DETECTED: ${targetToken}`);
-  console.log("🛡️  Passing transaction through WatchTower Middleware...\n");
+  // Initialize WatchTower with a configurable threshold.
+  // An arbitrage bot might set threshold: 40 (very cautious).
+  // A yield optimizer might set threshold: 80 (more tolerant).
+  const watchTower = new WatchTowerClient({
+    ...agentConfig,
+    threshold: 60, // Block anything above 60
+  });
 
-  try {
-    const safeTx = await watchTower.guardTransaction(targetToken, "1952");
+  console.log("🚀 Starting Protected Trading Agent with WatchTower SDK...");
+  console.log(`👛 Agent wallet: ${agentConfig.agentWallet}`);
+  console.log(`🔧 Kill Switch threshold: 60/100`);
+  console.log("📡 Listening for new token pairs on Dex...");
 
-    console.log(`\n======================================================`);
-    console.log(`✅ WATCHTOWER CLEAR`);
-    console.log(`======================================================`);
-    console.log(`Threat Score : ${safeTx.threatScore}/100`);
-    console.log(`Confidence   : ${(safeTx.confidence * 100).toFixed(0)}%`);
-    console.log(`On-chain Hash: ${safeTx.scanHash.substring(0, 16)}...`);
+  setTimeout(async () => {
+    console.log(`\n⚠️  NEW PAIR DETECTED: ${targetToken}`);
+    console.log("💸 WatchTower will settle the x402 payment automatically if required.");
+    console.log("🛡️  Passing transaction through WatchTower Middleware...\n");
 
-    if (safeTx.modules) {
-      console.log("\nIntelligence Breakdown:");
-      for (const mod of safeTx.modules) {
-        const status = mod.status === 'coming_soon' ? ' [Coming Soon]' : '';
-        console.log(`  ► ${mod.name}${status} (${mod.score}/${mod.maxScore})`);
-        for (const s of mod.signals) {
-          console.log(`      - ${s}`);
+    try {
+      const safeTx = await watchTower.guardTransaction(targetToken, agentConfig.chainId);
+
+      console.log(`\n======================================================`);
+      console.log(`✅ WATCHTOWER CLEAR`);
+      console.log(`======================================================`);
+      console.log(`Threat Score : ${safeTx.threatScore}/100`);
+      console.log(`Confidence   : ${(safeTx.confidence * 100).toFixed(0)}%`);
+      console.log(`On-chain Hash: ${safeTx.scanHash.substring(0, 16)}...`);
+
+      if (safeTx.modules) {
+        console.log("\nIntelligence Breakdown:");
+        for (const mod of safeTx.modules) {
+          const status = mod.status === 'coming_soon' ? ' [Coming Soon]' : '';
+          console.log(`  ► ${mod.name}${status} (${mod.score}/${mod.maxScore})`);
+          for (const s of mod.signals) {
+            console.log(`      - ${s}`);
+          }
         }
       }
-    }
-    console.log(`======================================================`);
-    console.log(`🚀 Executing trade...`);
-
-    process.exit(0);
-  } catch (err) {
-    if (err instanceof WatchTowerAbortError) {
-      console.log(`\n======================================================`);
-      console.log(`🛑 WATCHTOWER OVERRIDE: TRANSACTION ABORTED`);
       console.log(`======================================================`);
-      console.log(`Threat Score : ${err.threatScore}/100`);
-      console.log(`Confidence   : ${(err.confidence * 100).toFixed(0)}%`);
-      console.log(`\nCritical Flags Detected:`);
-      
-      err.reasoning.forEach(reason => {
-        // Clean up the "[Module Name]" prefix if it exists to make it prettier
-        const cleanReason = reason.replace(/^\[.*?\]\s*/, '');
-        console.log(`  ❌ ${cleanReason}`);
-      });
+      console.log(`🚀 Executing trade...`);
 
-      console.log(`======================================================`);
-      console.log(`💰 Funds protected. The agent avoided a total loss.\n`);
       process.exit(0);
-    } else {
+    } catch (err) {
+      if (err instanceof WatchTowerAbortError) {
+        console.log(`\n======================================================`);
+        console.log(`🛑 WATCHTOWER OVERRIDE: TRANSACTION ABORTED`);
+        console.log(`======================================================`);
+        console.log(`Threat Score : ${err.threatScore}/100`);
+        console.log(`Confidence   : ${(err.confidence * 100).toFixed(0)}%`);
+        console.log(`\nCritical Flags Detected:`);
+
+        err.reasoning.forEach(reason => {
+          const cleanReason = reason.replace(/^\[.*?\]\s*/, '');
+          console.log(`  ❌ ${cleanReason}`);
+        });
+
+        console.log(`======================================================`);
+        console.log(`💰 Funds protected. The agent avoided a total loss.\n`);
+        process.exit(0);
+      }
+
+      if (err instanceof WatchTowerPaymentFundingError || err instanceof WatchTowerPaymentRequiredError) {
+        console.error("\n❌ WatchTower payment could not be completed automatically:");
+        console.error(err.message);
+        process.exit(1);
+      }
+
       console.error("\n❌ Unknown Error:", err);
       process.exit(1);
     }
-  }
-}, 2000);
+  }, 2000);
+}
+
+main().catch((err) => {
+  console.error("\n❌ Demo configuration error:", err.message);
+  process.exit(1);
+});

@@ -1,76 +1,69 @@
-// The live honeypot contract on X Layer Testnet
-const targetToken = "0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D";
-const targetChainId = "1952";
-const payer = "0x0000000000000000000000000000000000000D99";
+/* eslint-disable @typescript-eslint/no-require-imports */
+const {
+  WatchTowerClient,
+  WatchTowerPaymentFundingError,
+  WatchTowerPaymentRequiredError,
+} = require("../packages/watchtower-sdk/src/index.js");
+const { createAgentConfig } = require("./watchtower-demo-config.js");
 
-// L5: Configurable API URL
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
-const PAYMENT_TEST_TX_HASH = process.env.PAYMENT_TEST_TX_HASH;
-
-function decodeBase64Json(value) {
-  try {
-    return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-  } catch {
-    return null;
-  }
-}
+// WETH on Ethereum mainnet. This blue-chip ERC-20 has strong coverage across
+// DexScreener liquidity/social data, GoPlus contract analysis, and Ethplorer holders.
+const targetToken = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const targetChainId = "1";
 
 async function runDeepScan() {
+  const agentConfig = await createAgentConfig();
+  const watchTower = new WatchTowerClient(agentConfig);
+
   console.log("🔍 Initializing WatchTower Deep Scan (Tier 1)...");
-  console.log(`💸 Using self-hosted x402 verification on X Layer testnet...`);
-  
+  console.log(`👛 Agent wallet: ${agentConfig.agentWallet}`);
+  console.log("💸 WatchTower will settle the x402 payment automatically if required.");
+
   try {
-    const body = JSON.stringify({
-      tokenAddress: targetToken,
-      chainId: targetChainId,
-      agentWallet: payer
-    });
-    const headers = { "Content-Type": "application/json" };
-    if (PAYMENT_TEST_TX_HASH) headers.Authorization = `L402 ${PAYMENT_TEST_TX_HASH}`;
+    const report = await watchTower.deepScan(targetToken, { chainId: targetChainId });
 
-    const response = await fetch(`${API_URL}/api/scan/deep`, {
-      method: "POST",
-      headers,
-      body,
-    });
+    console.log(`\n======================================================`);
+    console.log(`✅ DEEP SCAN COMPLETE`);
+    console.log(`======================================================`);
+    console.log(`Target Address : ${report.tokenAddress}`);
+    console.log(`Chain ID       : ${report.chainId}`);
+    console.log(`Verdict        : ${report.verdict.recommendation}`);
+    console.log(`Threat Score   : ${report.verdict.threatScore}/100`);
+    console.log(`Confidence     : ${(report.verdict.confidence * 100).toFixed(0)}%`);
 
-    if (response.status === 402) {
-      const encodedRequirement = response.headers.get('PAYMENT-REQUIRED');
-      const requirement = encodedRequirement ? decodeBase64Json(encodedRequirement) : (await response.json()).paymentRequired;
-      console.log('\n💳 Payment required before scan execution:');
-      console.log(`   Amount   : ${requirement.amount} ${requirement.currency}`);
-      console.log(`   Chain ID : ${requirement.chainId}`);
-      console.log(`   Token    : ${requirement.tokenAddress}`);
-      console.log(`   Treasury : ${requirement.payTo}`);
-      console.log('\nSend the payment, then rerun with PAYMENT_TEST_TX_HASH=<tx_hash>.');
-      return;
+    console.log(`\nIntelligence Breakdown:`);
+    for (const mod of report.intelligenceModules) {
+      const status = mod.status === 'coming_soon' ? ' [Coming Soon]' : '';
+      console.log(`  ► ${mod.name}${status} (${mod.score}/${mod.maxScore})`);
+      for (const signal of mod.signals) {
+        console.log(`      - ${signal}`);
+      }
     }
 
-    const data = await response.json();
-    
-    if (data.success) {
-      const report = data.data;
-      
-      console.log(`\n======================================================`);
-      console.log(`✅ DEEP SCAN COMPLETE`);
-      console.log(`======================================================`);
-      console.log(`Target Address : ${report.tokenAddress}`);
-      console.log(`Chain ID       : ${report.chainId}`);
-      console.log(`Verdict        : ${report.verdict.recommendation}`);
-      console.log(`Threat Score   : ${report.verdict.threatScore}/100`);
-      console.log(`Confidence     : ${(report.verdict.confidence * 100).toFixed(0)}%`);
-      
-      console.log(`\n======================================================`);
-      console.log(`💎 PREMIUM REPORT GENERATED`);
-      console.log(`======================================================`);
-      console.log(`View your full intelligence breakdown online:`);
-      console.log(`👉 ${API_URL}/report/${report.verification.scanHash}\n`);
-    } else {
-      console.error("\n❌ Scan failed:", data);
+    console.log(`\nRecommendations:`);
+    for (const recommendation of report.recommendations) {
+      console.log(`  - ${recommendation}`);
     }
+
+    console.log(`\n======================================================`);
+    console.log(`💎 PREMIUM REPORT GENERATED`);
+    console.log(`======================================================`);
+    console.log(`Scan Hash      : ${report.verification.scanHash}`);
+    console.log(`Registry Tx    : ${report.verification.txHash || 'not recorded'}`);
+    console.log(`View report    : ${agentConfig.apiUrl}/report/${report.verification.scanHash}\n`);
   } catch (err) {
-    console.error("Error connecting to WatchTower API:", err.message);
+    if (err instanceof WatchTowerPaymentFundingError || err instanceof WatchTowerPaymentRequiredError) {
+      console.error("\n❌ WatchTower payment could not be completed automatically:");
+      console.error(err.message);
+      process.exit(1);
+    }
+
+    console.error("Error running WatchTower Deep Scan:", err.message);
+    process.exit(1);
   }
 }
 
-runDeepScan();
+runDeepScan().catch((err) => {
+  console.error("\n❌ Demo configuration error:", err.message);
+  process.exit(1);
+});

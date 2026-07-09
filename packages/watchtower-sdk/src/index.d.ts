@@ -77,6 +77,9 @@ export declare class WatchTowerPaymentRequiredError extends Error {
     requirement: Web3PaymentRequirement;
     constructor(requirement: Web3PaymentRequirement);
 }
+export declare class WatchTowerPaymentFundingError extends Error {
+    constructor(message: string);
+}
 export declare class WatchTowerClient {
     private apiUrl;
     private agentWallet;

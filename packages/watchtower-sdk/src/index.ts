@@ -108,6 +108,13 @@ export class WatchTowerPaymentRequiredError extends Error {
   }
 }
 
+export class WatchTowerPaymentFundingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WatchTowerPaymentFundingError';
+  }
+}
+
 export class WatchTowerClient {
   private apiUrl: string;
   private agentWallet: string;
@@ -290,7 +297,7 @@ export class WatchTowerClient {
       throw new WatchTowerPaymentRequiredError(requirement);
     }
 
-    const [{ createPublicClient, createWalletClient, defineChain, http, parseUnits }, { privateKeyToAccount }] = await Promise.all([
+    const [{ createPublicClient, createWalletClient, defineChain, formatUnits, http, parseUnits }, { privateKeyToAccount }] = await Promise.all([
       import('viem'),
       import('viem/accounts'),
     ]);
@@ -319,7 +326,47 @@ export class WatchTowerClient {
         outputs: [{ name: '', type: 'bool' }],
         stateMutability: 'nonpayable',
       },
+      {
+        type: 'function',
+        name: 'balanceOf',
+        inputs: [{ name: 'account', type: 'address' }],
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'view',
+      },
     ] as const;
+    const amount = parseUnits(requirement.amount, requirement.tokenDecimals);
+    const tokenBalance = await publicClient.readContract({
+      address: requirement.tokenAddress as `0x${string}`,
+      abi: erc20TransferAbi,
+      functionName: 'balanceOf',
+      args: [account.address],
+    });
+
+    if (tokenBalance < amount) {
+      throw new WatchTowerPaymentFundingError(
+        `Payment wallet ${account.address} has ${formatUnits(tokenBalance, requirement.tokenDecimals)} ${requirement.currency}, but ${requirement.amount} ${requirement.currency} is required.`,
+      );
+    }
+
+    const nativeBalance = await publicClient.getBalance({ address: account.address });
+    const gas = await publicClient.estimateContractGas({
+      account,
+      address: requirement.tokenAddress as `0x${string}`,
+      abi: erc20TransferAbi,
+      functionName: 'transfer',
+      args: [
+        requirement.payTo as `0x${string}`,
+        amount,
+      ],
+    });
+    const gasPrice = await publicClient.getGasPrice();
+    const requiredNativeBalance = gas * gasPrice;
+
+    if (nativeBalance < requiredNativeBalance) {
+      throw new WatchTowerPaymentFundingError(
+        `Payment wallet ${account.address} has ${formatUnits(nativeBalance, 18)} native gas token, but at least ${formatUnits(requiredNativeBalance, 18)} is required for the x402 payment transaction.`,
+      );
+    }
 
     const txHash = await walletClient.writeContract({
       address: requirement.tokenAddress as `0x${string}`,
@@ -327,7 +374,7 @@ export class WatchTowerClient {
       functionName: 'transfer',
       args: [
         requirement.payTo as `0x${string}`,
-        parseUnits(requirement.amount, requirement.tokenDecimals),
+        amount,
       ],
     });
     await publicClient.waitForTransactionReceipt({ hash: txHash });
