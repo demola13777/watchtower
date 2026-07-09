@@ -15,6 +15,8 @@ import {
   Database
 } from "lucide-react";
 
+const GITHUB_URL = "https://github.com/demola13777/watchtower";
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 font-sans selection:bg-cyan-500/30 overflow-hidden">
@@ -29,8 +31,14 @@ export default function Home() {
             <span className="text-xl font-bold text-white tracking-tight">WatchTower</span>
           </div>
           <div className="flex items-center gap-4">
+            <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-sm font-medium text-slate-400 hover:text-white transition-colors">
+              GitHub
+            </Link>
+            <Link href="/docs" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
+              Docs
+            </Link>
             <Link href="#integrate" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
-              Developers
+              SDK
             </Link>
             <Link href="/network" className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-sm font-medium hover:border-cyan-500/50 hover:bg-slate-800 transition-all group">
               Live Network
@@ -63,7 +71,7 @@ export default function Home() {
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link 
-              href="#integrate" 
+              href="/docs" 
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all flex items-center justify-center gap-2 group"
             >
               Read the Docs
@@ -344,10 +352,12 @@ export default function Home() {
             <span className="text-slate-500 font-medium">WatchTower Protocol</span>
           </div>
           <div className="flex items-center gap-6 text-sm font-medium text-slate-500">
+            <Link href="/docs" className="hover:text-cyan-400 transition-colors">Docs</Link>
             <Link href="/network" className="hover:text-cyan-400 transition-colors">Live Network</Link>
             <Link href="#integrate" className="hover:text-cyan-400 transition-colors">SDK</Link>
             <Link href="#pricing" className="hover:text-cyan-400 transition-colors">Pricing</Link>
             <Link href="/verify" className="hover:text-cyan-400 transition-colors">Verify Attestation</Link>
+            <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">GitHub</Link>
           </div>
         </div>
       </footer>

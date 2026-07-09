@@ -6,6 +6,10 @@ WatchTower lets an agent ask one question before it trades: **is this token safe
 
 This project was built for the OKX AI Hackathon with a production-minded architecture: free-tier data providers and self-hosted payment verification are isolated behind service boundaries so they can be replaced later without rewriting the scan engine, SDK, MCP server, or route logic.
 
+- Repository: [github.com/demola13777/watchtower](https://github.com/demola13777/watchtower)
+- Local docs route: `/docs`
+- SDK quickstart route: `/#integrate`
+
 ## Why It Exists
 
 Autonomous trading agents can discover and execute opportunities faster than humans can review them. That creates a new failure mode: an agent may interact with a honeypot, illiquid token, concentrated supply, or suspicious market before the operator notices.
@@ -179,6 +183,7 @@ npm run dev
 Open:
 
 - Homepage: `http://localhost:3000`
+- Docs: `http://localhost:3000/docs`
 - Network dashboard: `http://localhost:3000/network`
 - Verifier: `http://localhost:3000/verify`
 - MCP endpoint: `http://localhost:3000/api/mcp`
