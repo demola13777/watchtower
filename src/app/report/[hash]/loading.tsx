@@ -9,7 +9,7 @@ export default function ReportLoading() {
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
               <Hexagon className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">WatchTower</span>
+            <span className="text-xl font-bold text-white">WatchTower</span>
           </div>
         </div>
       </nav>

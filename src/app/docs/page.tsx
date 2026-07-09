@@ -51,7 +51,7 @@ function Section({
         <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
           {icon}
         </div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">{title}</h2>
+        <h2 className="text-2xl font-bold text-white">{title}</h2>
       </div>
       <div className="space-y-5 text-[15px] leading-relaxed text-slate-400">{children}</div>
     </section>
@@ -79,7 +79,7 @@ export default function DocsPage() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.6)] transition-all">
               <Hexagon className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-white">WatchTower</span>
+            <span className="text-xl font-bold text-white">WatchTower</span>
           </Link>
           <div className="flex items-center gap-5 text-sm font-medium">
             <Link href="/#integrate" className="text-slate-400 transition-colors hover:text-white">SDK</Link>
@@ -119,7 +119,7 @@ export default function DocsPage() {
               <BookOpen className="h-3.5 w-3.5" />
               Developer Documentation
             </div>
-            <h1 className="text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 sm:text-5xl lg:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700">
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 sm:text-5xl lg:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700">
               Integrate WatchTower into an autonomous trading agent.
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-slate-400 animate-in fade-in slide-in-from-bottom-4 duration-1000">

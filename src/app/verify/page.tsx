@@ -148,7 +148,7 @@ export default function VerifyPage() {
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
               <Hexagon className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">WatchTower</span>
+            <span className="text-xl font-bold text-white">WatchTower</span>
           </Link>
           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">
             Verification

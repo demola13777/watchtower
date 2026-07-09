@@ -115,7 +115,7 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
               <Hexagon className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">WatchTower</span>
+            <span className="text-xl font-bold text-white">WatchTower</span>
           </div>
           {/* M8: Consistent UTC date formatting */}
           <div className="text-xs text-slate-500 font-mono break-all sm:break-normal">
@@ -138,13 +138,13 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-slate-400 mb-1 uppercase tracking-widest font-bold">Threat Score</div>
-                  <div className={`text-5xl font-black ${styles.text} leading-none tracking-tighter`}>
+                  <div className={`text-5xl font-black ${styles.text} leading-none`}>
                     {report.verdict.threatScore}
                   </div>
                 </div>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase mb-3">
+              <h1 className="text-2xl sm:text-3xl font-black text-white uppercase mb-3">
                 {report.verdict.recommendation}
               </h1>
               <p className="text-slate-300 text-sm sm:text-base leading-relaxed mb-6">

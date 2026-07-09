@@ -28,7 +28,7 @@ export default function Home() {
             <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
               <Hexagon className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">WatchTower</span>
+            <span className="text-xl font-bold text-white">WatchTower</span>
           </div>
           <div className="flex items-center gap-4">
             <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-sm font-medium text-slate-400 hover:text-white transition-colors">
@@ -58,7 +58,7 @@ export default function Home() {
             <Terminal className="h-4 w-4 text-emerald-400" /> <span className="opacity-70 text-slate-500">$</span> npm i okx-watchtower-middleware
           </div>
           
-          <h1 className="text-5xl sm:text-7xl font-black text-white tracking-tight mb-6 leading-tight">
+          <h1 className="text-5xl sm:text-7xl font-black text-white mb-6 leading-tight">
             Pre-Execution Security for <br className="hidden sm:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
               Autonomous Trading Agents.

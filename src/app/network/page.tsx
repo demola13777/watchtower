@@ -235,7 +235,7 @@ export default function Dashboard() {
               <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] transition-all">
                 <Hexagon className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-white tracking-tight">WatchTower</span>
+              <span className="text-xl font-bold text-white">WatchTower</span>
             </Link>
             <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-widest">
               Network Explorer
