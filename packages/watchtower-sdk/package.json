@@ -1,0 +1,22 @@
+{
+  "name": "okx-watchtower-middleware",
+  "version": "1.0.0",
+  "description": "Security middleware for autonomous crypto agents. Intercepts transactions, evaluates threats via WatchTower, and blocks malicious trades.",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "build": "npx tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["watchtower", "security", "agents", "x402", "xlayer", "okx"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "viem": "^2.54.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,56 @@
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+export const scans = sqliteTable('scans', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chainId: text('chain_id').notNull().default('196'),
+  tokenAddress: text('token_address').notNull(),
+  threatScore: integer('threat_score').notNull(),
+  recommendation: text('recommendation').notNull(),
+  scanHash: text('scan_hash').notNull().unique(), // H8: Unique constraint
+  txHash: text('tx_hash'),                        // C6: Separate on-chain tx hash
+  agentWallet: text('agent_wallet'),               // Optional, who requested the scan
+  tier: text('tier').default('firewall'),           // 'firewall' (0.5 USDT) or 'deep' (1 USDT)
+  reportData: text('report_data'),                 // Stores full stringified deep scan JSON
+  timestamp: integer('timestamp').notNull(),
+});
+
+export const agents = sqliteTable('agents', {
+  wallet: text('wallet').primaryKey(),
+  totalScans: integer('total_scans').default(0),
+  recklessTrades: integer('reckless_trades').default(0), // Tracks agents that ignore ABORT warnings
+});
+
+export const payments = sqliteTable('payments', {
+  paymentId: text('payment_id').primaryKey(),
+  status: text('status').notNull().default('pending'), // pending | settled | rejected | expired
+  tier: text('tier').notNull(),
+  amount: text('amount').notNull(),
+  currency: text('currency').notNull(),
+  network: text('network').notNull(),
+  scheme: text('scheme').notNull(),
+  payer: text('payer'),
+  payTo: text('pay_to').notNull(),
+  resource: text('resource').notNull(),
+  method: text('method').notNull(),
+  requestHash: text('request_hash').notNull(),
+  requirement: text('requirement').notNull(),
+  paymentPayload: text('payment_payload'),
+  settlementTxHash: text('settlement_tx_hash'),
+  failureReason: text('failure_reason'),
+  createdAt: integer('created_at').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  settledAt: integer('settled_at'),
+});
+
+export const usedPaymentTransactions = sqliteTable('used_payment_transactions', {
+  txHash: text('tx_hash').primaryKey(),
+  network: text('network').notNull(),
+  chainId: integer('chain_id').notNull(),
+  tokenAddress: text('token_address').notNull(),
+  treasuryAddress: text('treasury_address').notNull(),
+  payer: text('payer').notNull(),
+  amount: text('amount').notNull(),
+  tier: text('tier').notNull(),
+  requestHash: text('request_hash'),
+  createdAt: integer('created_at').notNull(),
+});

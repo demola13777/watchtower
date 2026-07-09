@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1783169635038,
+      "tag": "0000_known_supreme_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783516800000,
+      "tag": "0001_add_scan_chain_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783427595021,
+      "tag": "0002_aspiring_charles_xavier",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783457698430,
+      "tag": "0003_minor_kang",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783641600000,
+      "tag": "0004_add_payment_request_hash",
+      "breakpoints": true
+    }
+  ]
+}

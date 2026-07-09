@@ -1,0 +1,12 @@
+{
+  "name": "watchtower-contracts",
+  "version": "1.0.0",
+  "description": "WatchTower smart contracts (Foundry)",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

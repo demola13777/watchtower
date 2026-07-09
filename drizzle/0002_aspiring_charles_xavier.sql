@@ -1,0 +1,21 @@
+CREATE TABLE `payments` (
+	`payment_id` text PRIMARY KEY NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`tier` text NOT NULL,
+	`amount` text NOT NULL,
+	`currency` text NOT NULL,
+	`network` text NOT NULL,
+	`scheme` text NOT NULL,
+	`payer` text,
+	`pay_to` text NOT NULL,
+	`resource` text NOT NULL,
+	`method` text NOT NULL,
+	`request_hash` text NOT NULL,
+	`requirement` text NOT NULL,
+	`payment_payload` text,
+	`settlement_tx_hash` text,
+	`failure_reason` text,
+	`created_at` integer NOT NULL,
+	`expires_at` integer NOT NULL,
+	`settled_at` integer
+);

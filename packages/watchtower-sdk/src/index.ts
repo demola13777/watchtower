@@ -1,0 +1,381 @@
+const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
+
+interface Web3PaymentRequirement {
+  x402Version: number;
+  scheme: 'evm-erc20-transfer';
+  network: string;
+  chainId: number;
+  currency: string;
+  tokenAddress: string;
+  tokenDecimals: number;
+  amount: string;
+  payTo: string;
+  resource: string;
+  method: string;
+  tier: string;
+  instructions: string;
+}
+
+function decodeBase64Json<T>(value: string): T | null {
+  try {
+    return JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+export interface ScanResponse {
+  success: boolean;
+  data?: {
+    tokenAddress: string;
+    chainId: string;
+    chainResolution: {
+      chainId: string;
+      chainName: string;
+      confidence: string;
+      source: string;
+      reason: string;
+      candidates: Array<{
+        chainId: string;
+        name: string;
+        confidenceScore: number;
+        signals: string[];
+      }>;
+    };
+    threatScore: number;
+    confidence: number;
+    recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
+    reasoning: string[];
+    modules: Array<{
+      name: string;
+      score: number;
+      maxScore: number;
+      signals: string[];
+      status: 'active' | 'unavailable' | 'coming_soon';
+    }>;
+    scanHash: string;
+  };
+  error?: string;
+}
+
+export interface WatchTowerConfig {
+  /** WatchTower API base URL */
+  apiUrl: string;
+  /** The calling agent's wallet address (for reputation tracking) */
+  agentWallet: string;
+  /** Custom threat score threshold (0-100). Scores above this trigger ABORT. Default: 70 */
+  threshold?: number;
+  /** Optional default EVM chain id override. If omitted, WatchTower auto-detects the chain. */
+  chainId?: string | number;
+  /** Optional settlement transaction hash to send as Authorization: L402 <tx_hash>. */
+  paymentTxHash?: string;
+  /** Optional agent payment private key. Enables automatic ERC-20 x402 settlement on 402 challenges. */
+  paymentPrivateKey?: `0x${string}` | string;
+  /** Optional payment RPC override. Defaults to X Layer RPC for known WatchTower payment chains. */
+  paymentRpcUrl?: string;
+}
+
+export interface WatchTowerRequestOptions {
+  chainId?: string | number;
+  paymentTxHash?: string;
+}
+
+export class WatchTowerAbortError extends Error {
+  public threatScore: number;
+  public confidence: number;
+  public reasoning: string[];
+  public scanHash: string;
+
+  constructor(message: string, threatScore: number, confidence: number, reasoning: string[], scanHash: string) {
+    super(message);
+    this.name = 'WatchTowerAbortError';
+    this.threatScore = threatScore;
+    this.confidence = confidence;
+    this.reasoning = reasoning;
+    this.scanHash = scanHash;
+  }
+}
+
+export class WatchTowerPaymentRequiredError extends Error {
+  public requirement: Web3PaymentRequirement;
+
+  constructor(requirement: Web3PaymentRequirement) {
+    super(
+      `WatchTower payment required: transfer ${requirement.amount} ${requirement.currency} to ${requirement.payTo} on chain ${requirement.chainId}, then retry with Authorization: L402 <tx_hash>.`,
+    );
+    this.name = 'WatchTowerPaymentRequiredError';
+    this.requirement = requirement;
+  }
+}
+
+export class WatchTowerClient {
+  private apiUrl: string;
+  private agentWallet: string;
+  private threshold: number;
+  private chainId: string | undefined;
+  private paymentTxHash: string | undefined;
+  private paymentPrivateKey: string | undefined;
+  private paymentRpcUrl: string | undefined;
+
+  constructor(config: WatchTowerConfig) {
+    this.apiUrl = config.apiUrl;
+    this.agentWallet = config.agentWallet;
+    this.threshold = config.threshold ?? 70;
+    this.chainId = config.chainId === undefined ? undefined : String(config.chainId);
+    this.paymentTxHash = config.paymentTxHash;
+    this.paymentPrivateKey = config.paymentPrivateKey;
+    this.paymentRpcUrl = config.paymentRpcUrl;
+  }
+
+  /**
+   * Core Middleware Interceptor.
+   * Queries WatchTower, pays x402 automatically,
+   * and throws WatchTowerAbortError if the threat score exceeds the configured threshold.
+   */
+  async guardTransaction(
+    targetTokenAddress: string,
+    chainIdOrOptions: string | number | WatchTowerRequestOptions | undefined = this.chainId,
+  ): Promise<ScanResponse['data']> {
+    const options = this.normalizeOptions(chainIdOrOptions);
+    const payload: {
+      tokenAddress: string;
+      agentWallet: string;
+      chainId?: string;
+    } = {
+      tokenAddress: targetTokenAddress,
+      agentWallet: this.agentWallet,
+    };
+    if (options.chainId) payload.chainId = options.chainId;
+
+    const headers = this.createHeaders(options.paymentTxHash);
+
+    let res = await fetch(`${this.apiUrl}/api/scan`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 402) {
+      const requirement = await this.readPaymentRequirement(res);
+      const txHash = await this.settlePayment(requirement);
+      res = await fetch(`${this.apiUrl}/api/scan`, {
+        method: 'POST',
+        headers: this.createHeaders(txHash),
+        body: JSON.stringify(payload),
+      });
+    }
+
+    if (!res.ok) {
+      throw new Error(`WatchTower API error: ${res.statusText}`);
+    }
+
+    const { data, success, error } = (await res.json()) as ScanResponse;
+
+    if (!success || !data) {
+      throw new Error(error || 'Failed to scan token');
+    }
+
+    // Configurable Kill Switch — use client-side threshold, not just server recommendation
+    if (data.threatScore > this.threshold) {
+      throw new WatchTowerAbortError(
+        `WatchTower blocked execution on ${targetTokenAddress} (score ${data.threatScore} > threshold ${this.threshold}). Reasons: ${data.reasoning.join(', ')}`,
+        data.threatScore,
+        data.confidence,
+        data.reasoning,
+        data.scanHash,
+      );
+    }
+
+    return data;
+  }
+
+  /**
+   * Deep Scan — Tier 1 (1 USDT)
+   * Returns a comprehensive threat report with on-chain attestation.
+   * Unlike guardTransaction(), this does NOT throw on high threat scores.
+   */
+  async deepScan(
+    targetTokenAddress: string,
+    chainIdOrOptions: string | number | WatchTowerRequestOptions | undefined = this.chainId,
+  ): Promise<DeepScanResponse> {
+    const options = this.normalizeOptions(chainIdOrOptions);
+    const payload: {
+      tokenAddress: string;
+      agentWallet: string;
+      chainId?: string;
+    } = {
+      tokenAddress: targetTokenAddress,
+      agentWallet: this.agentWallet,
+    };
+    if (options.chainId) payload.chainId = options.chainId;
+
+    const headers = this.createHeaders(options.paymentTxHash);
+
+    let res = await fetch(`${this.apiUrl}/api/scan/deep`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 402) {
+      const requirement = await this.readPaymentRequirement(res);
+      const txHash = await this.settlePayment(requirement);
+      res = await fetch(`${this.apiUrl}/api/scan/deep`, {
+        method: 'POST',
+        headers: this.createHeaders(txHash),
+        body: JSON.stringify(payload),
+      });
+    }
+
+    if (!res.ok) {
+      throw new Error(`WatchTower API error: ${res.statusText}`);
+    }
+
+    const { data, success, error } = await res.json();
+
+    if (!success || !data) {
+      throw new Error(error || 'Failed to run deep scan');
+    }
+
+    return data as DeepScanResponse;
+  }
+
+  private normalizeOptions(
+    chainIdOrOptions: string | number | WatchTowerRequestOptions | undefined,
+  ): { chainId?: string; paymentTxHash?: string } {
+    const normalized: { chainId?: string; paymentTxHash?: string } = {};
+
+    if (typeof chainIdOrOptions === 'object' && chainIdOrOptions !== null) {
+      const chainId = chainIdOrOptions.chainId === undefined ? this.chainId : String(chainIdOrOptions.chainId);
+      const paymentTxHash = chainIdOrOptions.paymentTxHash ?? this.paymentTxHash;
+      if (chainId !== undefined) normalized.chainId = chainId;
+      if (paymentTxHash !== undefined) normalized.paymentTxHash = paymentTxHash;
+      return normalized;
+    }
+
+    if (chainIdOrOptions !== undefined) normalized.chainId = String(chainIdOrOptions);
+    if (this.paymentTxHash !== undefined) normalized.paymentTxHash = this.paymentTxHash;
+    return normalized;
+  }
+
+  private createHeaders(paymentTxHash?: string): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (paymentTxHash) {
+      headers.Authorization = `L402 ${paymentTxHash}`;
+    }
+    return headers;
+  }
+
+  private async readPaymentRequirement(res: Response): Promise<Web3PaymentRequirement> {
+    const header = res.headers.get(PAYMENT_REQUIRED_HEADER);
+    if (header) {
+      const requirement = decodeBase64Json<Web3PaymentRequirement>(header);
+      if (requirement) return requirement;
+    }
+
+    const body = await res.json().catch(() => null) as { paymentRequired?: Web3PaymentRequirement } | null;
+    if (body?.paymentRequired) return body.paymentRequired;
+    throw new Error('WatchTower payment challenge did not include a PAYMENT-REQUIRED requirement.');
+  }
+
+  private getPaymentRpcUrl(requirement: Web3PaymentRequirement): string {
+    if (this.paymentRpcUrl) return this.paymentRpcUrl;
+    if (requirement.chainId === 196) return 'https://rpc.xlayer.tech';
+    if (requirement.chainId === 1952) return 'https://testrpc.xlayer.tech';
+    throw new Error(`No payment RPC configured for chain ${requirement.chainId}. Pass paymentRpcUrl to WatchTowerClient.`);
+  }
+
+  private async settlePayment(requirement: Web3PaymentRequirement): Promise<string> {
+    if (!this.paymentPrivateKey) {
+      throw new WatchTowerPaymentRequiredError(requirement);
+    }
+
+    const [{ createPublicClient, createWalletClient, defineChain, http, parseUnits }, { privateKeyToAccount }] = await Promise.all([
+      import('viem'),
+      import('viem/accounts'),
+    ]);
+
+    const rpcUrl = this.getPaymentRpcUrl(requirement);
+    const chain = defineChain({
+      id: requirement.chainId,
+      name: requirement.network,
+      nativeCurrency: { name: 'OKB', symbol: 'OKB', decimals: 18 },
+      rpcUrls: { default: { http: [rpcUrl] } },
+    });
+    const privateKey = this.paymentPrivateKey.startsWith('0x')
+      ? this.paymentPrivateKey as `0x${string}`
+      : `0x${this.paymentPrivateKey}` as `0x${string}`;
+    const account = privateKeyToAccount(privateKey);
+    const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
+    const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
+    const erc20TransferAbi = [
+      {
+        type: 'function',
+        name: 'transfer',
+        inputs: [
+          { name: 'to', type: 'address' },
+          { name: 'amount', type: 'uint256' },
+        ],
+        outputs: [{ name: '', type: 'bool' }],
+        stateMutability: 'nonpayable',
+      },
+    ] as const;
+
+    const txHash = await walletClient.writeContract({
+      address: requirement.tokenAddress as `0x${string}`,
+      abi: erc20TransferAbi,
+      functionName: 'transfer',
+      args: [
+        requirement.payTo as `0x${string}`,
+        parseUnits(requirement.amount, requirement.tokenDecimals),
+      ],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    this.paymentTxHash = txHash;
+    return txHash;
+  }
+}
+
+export interface DeepScanResponse {
+  reportType: string;
+  tier: string;
+  price: string;
+  generatedAt: string;
+  chainId: string;
+  chainResolution: {
+    chainId: string;
+    chainName: string;
+    confidence: string;
+    source: string;
+    reason: string;
+    candidates: Array<{
+      chainId: string;
+      name: string;
+      confidenceScore: number;
+      signals: string[];
+    }>;
+  };
+  tokenAddress: string;
+  verdict: {
+    threatScore: number;
+    confidence: number;
+    recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
+    summary: string;
+  };
+  intelligenceModules: Array<{
+    name: string;
+    score: number;
+    maxScore: number;
+    signals: string[];
+    status: 'active' | 'unavailable' | 'coming_soon';
+  }>;
+  reasoning: string[];
+  verification: {
+    scanHash: string;
+    txHash: string | null;
+    registryContract: string;
+    chain: string;
+    status: string;
+  };
+  recommendations: string[];
+}
