@@ -10,7 +10,6 @@ import {
   ExternalLink,
   GitBranch,
   Hexagon,
-  KeyRound,
   Network,
   Shield,
   Terminal,
