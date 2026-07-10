@@ -127,6 +127,7 @@ export default function Dashboard() {
   
   // "Try It" scanner state
   const [scanAddress, setScanAddress] = useState('');
+  const [paymentTxHash, setPaymentTxHash] = useState('');
   const [paymentRequirement, setPaymentRequirement] = useState<Web3PaymentRequirement | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
@@ -179,10 +180,18 @@ export default function Dashboard() {
 
     try {
       const payload = JSON.stringify({ tokenAddress: addressValidation.address, agentWallet: '0x000000000000000000000000000000000000dA5b' });
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const trimmedTxHash = paymentTxHash.trim();
+      if (trimmedTxHash) {
+        if (!trimmedTxHash.match(/^0x[a-fA-F0-9]{64}$/)) {
+          throw new Error('Invalid settlement transaction hash. Enter a 0x-prefixed 66-character hash.');
+        }
+        headers.Authorization = `L402 ${trimmedTxHash}`;
+      }
 
       const res = await fetch('/api/scan/deep', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: payload,
       });
 
@@ -193,7 +202,7 @@ export default function Dashboard() {
           throw new Error('Payment challenge missing PAYMENT-REQUIRED details.');
         }
         setPaymentRequirement(requirement);
-        setScanError('Deep Scan requires an x402 settlement. Use the Agent Relay path so your AI client can handle payment and retry automatically.');
+        setScanError(`Payment required: send ${requirement.amount} ${requirement.currency} to ${requirement.payTo} on chain ${requirement.chainId}, then paste the transaction hash.`);
         return;
       }
       const data = await res.json();
@@ -202,6 +211,7 @@ export default function Dashboard() {
 
       if (data.success) {
         setScanResult(data.data);
+        setPaymentTxHash('');
         fetchTelemetry(); // Refresh stats
       } else {
         setScanError(data.message || data.error || 'Scan failed');
@@ -264,6 +274,15 @@ export default function Dashboard() {
               onChange={(e) => { setScanAddress(e.target.value.trim()); setScanError(''); setPaymentRequirement(null); }}
               placeholder="0x... (e.g. 0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D)"
               className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:shadow-[0_0_15px_rgba(6,182,212,0.1)] transition-all"
+              disabled={scanning}
+              onKeyDown={(e) => e.key === 'Enter' && !scanning && handleScan()}
+            />
+            <input
+              type="text"
+              value={paymentTxHash}
+              onChange={(e) => { setPaymentTxHash(e.target.value); setScanError(''); }}
+              placeholder="Optional payment tx hash: 0x..."
+              className="min-w-0 lg:w-[22rem] bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:shadow-[0_0_15px_rgba(6,182,212,0.1)] transition-all"
               disabled={scanning}
               onKeyDown={(e) => e.key === 'Enter' && !scanning && handleScan()}
             />
