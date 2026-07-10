@@ -54,6 +54,30 @@ function createDb() {
 }
 
 function ensureLocalSchema(sqlite: LocalSqliteDatabase) {
+  sqlite.prepare(`
+    CREATE TABLE IF NOT EXISTS scans (
+      id integer PRIMARY KEY AUTOINCREMENT,
+      chain_id text NOT NULL DEFAULT '196',
+      token_address text NOT NULL,
+      threat_score integer NOT NULL,
+      recommendation text NOT NULL,
+      scan_hash text NOT NULL UNIQUE,
+      tx_hash text,
+      agent_wallet text,
+      tier text DEFAULT 'firewall',
+      report_data text,
+      timestamp integer NOT NULL
+    )
+  `).run();
+
+  sqlite.prepare(`
+    CREATE TABLE IF NOT EXISTS agents (
+      wallet text PRIMARY KEY,
+      total_scans integer DEFAULT 0,
+      reckless_trades integer DEFAULT 0
+    )
+  `).run();
+
   const columns = new Set(sqlite.prepare('PRAGMA table_info(scans)').all().map((column) => column.name));
 
   if (columns.size > 0) {
