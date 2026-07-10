@@ -127,8 +127,8 @@ export function AgentRelayPanel({ requirement }: { requirement?: AgentRelayPayme
             requirement ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-400'
           }`}
         >
-          <span className="hidden sm:inline">Payment Details</span>
-          <span className="sm:hidden">Details</span>
+          <span className="hidden sm:inline">Relay Context</span>
+          <span className="sm:hidden">Relay</span>
           <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-500 ease-[cubic-bezier(0.87,0,0.13,1)] ${detailsOpen ? 'rotate-180 text-cyan-400' : ''}`} />
         </button>
       </div>
