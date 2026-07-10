@@ -186,8 +186,6 @@ interface TelemetryScan {
 
 interface LeaderboardAgent {
   agentWallet: string | null;
-  displayName: string;
-  specialty: string;
   totalScans: number;
   threatsDetected: number;
   cautionsRaised: number;
@@ -733,8 +731,9 @@ export default function Dashboard() {
 
                     <div className="md:col-span-4 min-w-0">
                       <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Agent</div>
-                      <div className="text-sm font-bold text-slate-200 truncate">{agent.displayName}</div>
-                      <div className="text-xs text-slate-500 mt-0.5 truncate">{agent.specialty}</div>
+                      <div className="font-mono text-sm text-cyan-400 break-all">
+                        {agent.agentWallet ? `${agent.agentWallet.substring(0,10)}...` : 'Unknown'}
+                      </div>
                     </div>
 
                     <div className="md:col-span-2 md:text-center">

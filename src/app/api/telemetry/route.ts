@@ -6,24 +6,6 @@ import { SCAN_PRICING_USDT } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
-const AGENT_PROFILES = [
-  { displayName: 'Aegis Relay', specialty: 'Autonomous risk firewall' },
-  { displayName: 'Sentinel Prime', specialty: 'High-confidence threat triage' },
-  { displayName: 'Vector Guard', specialty: 'Execution-layer protection' },
-];
-
-type LeaderboardRow = {
-  agentWallet: string | null;
-  totalScans: number;
-  threatsDetected: number;
-  cautionsRaised: number;
-  lastActive: number;
-};
-
-function getAgentProfile(rank: number) {
-  return AGENT_PROFILES[rank] ?? AGENT_PROFILES[AGENT_PROFILES.length - 1];
-}
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -78,10 +60,6 @@ export async function GET(req: Request) {
 
     const firewallScans = totalScans - deepScans;
     const revenue = (firewallScans * SCAN_PRICING_USDT.firewall) + (deepScans * SCAN_PRICING_USDT.deep);
-    const leaderboard = (leaderboardRows as LeaderboardRow[]).map((agent, index) => ({
-      ...agent,
-      ...getAgentProfile(index),
-    }));
 
     return NextResponse.json({
       success: true,
@@ -91,7 +69,7 @@ export async function GET(req: Request) {
         revenue,
         activeAgents,
         latestScans, // H5: No longer includes reportData or txHash
-        leaderboard,
+        leaderboard: leaderboardRows,
       }
     });
   } catch (error: unknown) {
