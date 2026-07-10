@@ -3,7 +3,6 @@
 # dependencies
 /node_modules
 node_modules/
-packages/watchtower-sdk/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -47,9 +46,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# unrelated local scratch repos
-token/
-
-# legacy nested checkout kept locally after flattening the repo
-watchtower/

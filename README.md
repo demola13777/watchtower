@@ -418,8 +418,6 @@ The app chooses the database driver automatically:
 
 ## Deployment on Vercel
 
-The Next.js app now lives at the repository root. A standard Vercel GitHub import can use the default Root Directory, and the included `vercel.json` runs `npm install` and `npm run build`.
-
 Required for a public deployment:
 
 - `NEXT_PUBLIC_SITE_URL`
@@ -451,17 +449,6 @@ The project includes:
 - `sitemap.ts`
 - basic security headers
 - report loading/error/not-found states
-
-## Production Readiness Notes
-
-Recent architectural decisions future contributors should preserve:
-
-- Payment verification is centralized in `src/lib/payment.ts` and `src/services/paymentVerifier.ts`. API routes should call `requirePayment` instead of verifying payment ad hoc.
-- x402-style settlement is network-agnostic. Network, RPC, treasury, token, and decimal values come from `src/config/network.ts`; switching testnet to mainnet should be an environment/configuration change followed by a real-funds end-to-end validation.
-- Agent `Authorization: L402 <tx_hash>` payments are recorded in `used_payment_transactions` to prevent replay across API and MCP surfaces.
-- Scan request identity includes `chainId` and a deterministic request hash so payment proofs can be tied to the payload that generated them.
-- Threat scores only use modules that returned genuine data. Missing provider data is reported as unavailable and excluded from weighting rather than simulated.
-- Telemetry is intentionally capped for public dashboards: latest scans are paginated/limited, and the leaderboard returns the current top three agents by scan volume.
 
 ## Verification Commands
 
@@ -498,19 +485,20 @@ These are known and intentionally documented:
 ## Project Structure
 
 ```text
-src/app/                  Next.js routes, pages, and API handlers
-src/app/api/scan          Tier 2 firewall endpoint
-src/app/api/scan/deep     Tier 1 deep scan endpoint
-src/app/api/mcp           MCP Streamable HTTP endpoint
-src/lib/engine.ts         Threat intelligence engine
-src/lib/payment.ts        PaymentService boundary
-src/lib/scan-service.ts   Shared scan orchestration
-src/lib/chain-resolver.ts Chain detection and fallback logic
-src/lib/db                Drizzle schema and database connection
-packages/watchtower-sdk   Agent SDK
-contracts/                WatchTowerRegistry and Foundry tests
-demo/                     Agent and API demos
-scripts/                  Regression scripts
+watchtower/
+  src/app/                  Next.js routes, pages, and API handlers
+  src/app/api/scan          Tier 2 firewall endpoint
+  src/app/api/scan/deep     Tier 1 deep scan endpoint
+  src/app/api/mcp           MCP Streamable HTTP endpoint
+  src/lib/engine.ts         Threat intelligence engine
+  src/lib/payment.ts        PaymentService boundary
+  src/lib/scan-service.ts   Shared scan orchestration
+  src/lib/chain-resolver.ts Chain detection and fallback logic
+  src/lib/db                Drizzle schema and database connection
+  packages/watchtower-sdk   Agent SDK
+  contracts/                WatchTowerRegistry and Foundry tests
+  demo/                     Agent and API demos
+  scripts/                  Regression scripts
 ```
 
 ## License
