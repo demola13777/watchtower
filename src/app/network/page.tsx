@@ -5,6 +5,19 @@ import { Shield, ShieldAlert, Activity, Zap, Hexagon, Server, Database, Search, 
 import Link from "next/link";
 import { AgentRelayPanel } from "@/components/agent-relay-panel";
 
+const erc20TransferAbi = [
+  {
+    type: 'function',
+    name: 'transfer',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
 // Module animation stages
 const SCAN_MODULES = [
   { name: 'Liquidity Intelligence', icon: 'activity', color: 'text-cyan-400', bgColor: 'bg-cyan-400' },
@@ -29,6 +42,16 @@ interface Web3PaymentRequirement {
   instructions: string;
 }
 
+type EthereumProvider = {
+  request<T = unknown>(args: { method: string; params?: unknown[] }): Promise<T>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
+
 function decodeBase64Json<T>(value: string): T | null {
   try {
     const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -39,6 +62,89 @@ function decodeBase64Json<T>(value: string): T | null {
   } catch {
     return null;
   }
+}
+
+function getChainMetadata(requirement: Web3PaymentRequirement) {
+  const isTestnet = requirement.chainId === 1952;
+  return {
+    chainId: `0x${requirement.chainId.toString(16)}`,
+    chainName: requirement.network || (isTestnet ? 'X Layer Testnet' : 'X Layer Mainnet'),
+    nativeCurrency: { name: 'OKB', symbol: 'OKB', decimals: 18 },
+    rpcUrls: [isTestnet ? 'https://testrpc.xlayer.tech' : 'https://rpc.xlayer.tech'],
+    blockExplorerUrls: [isTestnet ? 'https://www.oklink.com/xlayer-test' : 'https://www.oklink.com/xlayer'],
+  };
+}
+
+async function ensureWalletChain(provider: EthereumProvider, requirement: Web3PaymentRequirement) {
+  const chain = getChainMetadata(requirement);
+  const currentChainId = await provider.request<string>({ method: 'eth_chainId' }).catch(() => null);
+  if (currentChainId?.toLowerCase() === chain.chainId.toLowerCase()) return;
+
+  try {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: chain.chainId }],
+    });
+  } catch (error: unknown) {
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? Number((error as { code: unknown }).code)
+      : undefined;
+    if (code !== 4902) throw error;
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [chain],
+    });
+  }
+}
+
+async function waitForWalletReceipt(provider: EthereumProvider, txHash: string) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 120_000) {
+    const receipt = await provider.request<{ status?: string } | null>({
+      method: 'eth_getTransactionReceipt',
+      params: [txHash],
+    }).catch(() => null);
+
+    if (receipt?.status === '0x1') return;
+    if (receipt?.status === '0x0') {
+      throw new Error('Wallet payment transaction failed on-chain.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+  }
+  throw new Error('Wallet payment was submitted, but confirmation timed out. Please try again once the transaction is mined.');
+}
+
+async function settlePaymentWithWallet(requirement: Web3PaymentRequirement): Promise<string> {
+  const provider = window.ethereum;
+  if (!provider) {
+    throw new Error('No EVM wallet detected. Open this page in a browser with MetaMask, OKX Wallet, or another EVM wallet.');
+  }
+
+  const [account] = await provider.request<string[]>({ method: 'eth_requestAccounts' });
+  if (!account) throw new Error('No wallet account selected.');
+
+  await ensureWalletChain(provider, requirement);
+
+  const { encodeFunctionData, parseUnits } = await import('viem');
+  const amount = parseUnits(requirement.amount, requirement.tokenDecimals);
+  const data = encodeFunctionData({
+    abi: erc20TransferAbi,
+    functionName: 'transfer',
+    args: [requirement.payTo as `0x${string}`, amount],
+  });
+
+  const txHash = await provider.request<string>({
+    method: 'eth_sendTransaction',
+    params: [{
+      from: account,
+      to: requirement.tokenAddress,
+      data,
+      value: '0x0',
+    }],
+  });
+
+  await waitForWalletReceipt(provider, txHash);
+  return txHash;
 }
 
 async function validateChecksummedEvmAddress(value: string): Promise<{ ok: true; address: string } | { ok: false; message: string }> {
@@ -180,11 +286,15 @@ export default function Dashboard() {
     try {
       const payload = JSON.stringify({ tokenAddress: addressValidation.address, agentWallet: '0x000000000000000000000000000000000000dA5b' });
 
-      const res = await fetch('/api/scan/deep', {
+      const submitDeepScan = (paymentTxHash?: string) => fetch('/api/scan/deep', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: paymentTxHash
+          ? { 'Content-Type': 'application/json', Authorization: `L402 ${paymentTxHash}` }
+          : { 'Content-Type': 'application/json' },
         body: payload,
       });
+
+      let res = await submitDeepScan();
 
       if (res.status === 402) {
         const encodedRequirement = res.headers.get('PAYMENT-REQUIRED');
@@ -193,8 +303,10 @@ export default function Dashboard() {
           throw new Error('Payment challenge missing PAYMENT-REQUIRED details.');
         }
         setPaymentRequirement(requirement);
-        setScanError('Deep Scan requires an x402 settlement. Use the Agent Relay path so your AI client can handle payment and retry automatically.');
-        return;
+        setScanError(`Confirm ${requirement.amount} ${requirement.currency} in your wallet to unlock this Deep Scan.`);
+        const txHash = await settlePaymentWithWallet(requirement);
+        setScanError('Payment confirmed. Finalizing scan...');
+        res = await submitDeepScan(txHash);
       }
       const data = await res.json();
       clearInterval(moduleTimer);
