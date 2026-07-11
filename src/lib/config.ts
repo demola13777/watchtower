@@ -1,13 +1,16 @@
 export const DEFAULT_CHAIN_ID = '196';
 export const XLAYER_TESTNET_CHAIN_ID = '1952';
+const IS_MAINNET_ENV = process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet';
 
 export const REGISTRY_ADDRESS =
   process.env.NEXT_PUBLIC_REGISTRY_ADDRESS ||
   process.env.WATCHTOWER_REGISTRY_ADDRESS ||
-  '0x82a131047e92b0A785971AA78634495222b9dED5';
+  // Preserve the local legacy registry for non-production development only.
+  // A mainnet deployment must explicitly declare its own registry address.
+  (IS_MAINNET_ENV ? '' : '0x82a131047e92b0A785971AA78634495222b9dED5');
 
 export const REGISTRY_CHAIN_ID =
-  process.env.NEXT_PUBLIC_REGISTRY_CHAIN_ID || XLAYER_TESTNET_CHAIN_ID;
+  process.env.NEXT_PUBLIC_REGISTRY_CHAIN_ID || (IS_MAINNET_ENV ? DEFAULT_CHAIN_ID : XLAYER_TESTNET_CHAIN_ID);
 
 export const SCAN_PRICING_USDT = {
   deep: 1,
@@ -24,7 +27,7 @@ export interface SupportedEvmChain {
   supportsGoPlus?: boolean;
 }
 
-export const SUPPORTED_EVM_CHAINS: SupportedEvmChain[] = [
+const ALL_SUPPORTED_EVM_CHAINS: SupportedEvmChain[] = [
   {
     chainId: '1',
     name: 'Ethereum',
@@ -88,6 +91,12 @@ export const SUPPORTED_EVM_CHAINS: SupportedEvmChain[] = [
     supportsGoPlus: true,
   },
 ];
+
+// In mainnet production, exclude testnet chains from auto-detection to avoid
+// unnecessary RPC calls and prevent testnet tokens from appearing as candidates.
+export const SUPPORTED_EVM_CHAINS: SupportedEvmChain[] = IS_MAINNET_ENV
+  ? ALL_SUPPORTED_EVM_CHAINS.filter((chain) => chain.chainId !== XLAYER_TESTNET_CHAIN_ID)
+  : ALL_SUPPORTED_EVM_CHAINS;
 
 export const DEXSCREENER_CHAIN_BY_EVM_CHAIN_ID = Object.fromEntries(
   SUPPORTED_EVM_CHAINS

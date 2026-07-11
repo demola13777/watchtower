@@ -4,6 +4,7 @@ import { resolveTokenChain, type ChainResolution } from '@/lib/chain-resolver';
 import { analyzeToken, submitScanProof, type ThreatReport } from '@/lib/engine';
 import { REGISTRY_ADDRESS, REGISTRY_CHAIN_ID, SCAN_PRICING_USDT } from '@/lib/config';
 import { trackAgentMetrics } from '@/lib/api-utils';
+import { logger } from '@/lib/logger';
 
 export interface DeepScanReport {
   reportType: 'DEEP_SCAN';
@@ -31,17 +32,53 @@ export interface DeepScanReport {
   recommendations: string[];
 }
 
+export class ChainResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChainResolutionError';
+  }
+}
+
+export async function resolveScanChain(input: {
+  tokenAddress: string;
+  chainId?: string;
+}): Promise<ChainResolution> {
+  const chainResolution = await resolveTokenChain(input.tokenAddress, input.chainId);
+  if (chainResolution.source !== 'explicit' && (chainResolution.confidence === 'ambiguous' || chainResolution.confidence === 'fallback')) {
+    throw new ChainResolutionError(
+      'WatchTower could not confidently identify this token\'s chain. Retry with an explicit chainId to avoid scanning the wrong deployment.',
+    );
+  }
+  return chainResolution;
+}
+
 export async function runFirewallScan(input: {
   tokenAddress: string;
   chainId?: string;
   agentWallet?: string;
+  chainResolution?: ChainResolution;
 }) {
-  const chainResolution = await resolveTokenChain(input.tokenAddress, input.chainId);
+  const chainResolution = input.chainResolution ?? await resolveScanChain(input);
   const chainId = chainResolution.chainId;
   const report = await analyzeToken(input.tokenAddress, chainId);
 
+  const activeModules = report.modules.filter((m) => m.status === 'active').length;
+  const unavailableModules = report.modules.filter((m) => m.status === 'unavailable').length;
+  logger.scan('firewall_complete', {
+    tokenAddress: input.tokenAddress,
+    chainId,
+    tier: 'firewall',
+    threatScore: report.threatScore,
+    recommendation: report.recommendation,
+    activeModules,
+    unavailableModules,
+  });
+
   let txHash: string | null = null;
-  const recordFirewall = process.env.RECORD_FIREWALL_SCANS !== 'false';
+  // Mainnet defaults to Deep Scan attestations only. Firewall attestations can
+  // be explicitly enabled once the registry signer and gas budget are operated.
+  const recordFirewall = process.env.RECORD_FIREWALL_SCANS === 'true'
+    || (process.env.NEXT_PUBLIC_NETWORK_ENV !== 'mainnet' && process.env.RECORD_FIREWALL_SCANS !== 'false');
   if (recordFirewall) {
     txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
   }
@@ -80,11 +117,17 @@ export async function runDeepScan(input: {
   tokenAddress: string;
   chainId?: string;
   agentWallet?: string;
+  chainResolution?: ChainResolution;
 }): Promise<DeepScanReport> {
-  const chainResolution = await resolveTokenChain(input.tokenAddress, input.chainId);
+  const chainResolution = input.chainResolution ?? await resolveScanChain(input);
   const chainId = chainResolution.chainId;
   const report = await analyzeToken(input.tokenAddress, chainId);
   const txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
+  if (!txHash) {
+    logger.error('Deep scan on-chain attestation failed', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
+    throw new Error('On-chain attestation could not be confirmed. Retry this paid request with the same payment receipt.');
+  }
+  logger.registry('deep_scan_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
 
   const deepReport: DeepScanReport = {
     reportType: 'DEEP_SCAN',
@@ -104,12 +147,10 @@ export async function runDeepScan(input: {
     reasoning: report.reasoning,
     verification: {
       scanHash: report.scanHash,
-      txHash: txHash || null,
+      txHash,
       registryContract: REGISTRY_ADDRESS,
       chain: `Registry chain ${REGISTRY_CHAIN_ID}; scan chain ${chainId}`,
-      status: txHash
-        ? 'On-chain attestation recorded successfully'
-        : 'Off-chain hash generated (blockchain submission pending)',
+      status: 'On-chain attestation recorded successfully',
     },
     recommendations: generateRecommendations(report.recommendation, report.modules),
   };
@@ -120,7 +161,7 @@ export async function runDeepScan(input: {
     threatScore: report.threatScore,
     recommendation: report.recommendation,
     scanHash: report.scanHash,
-    txHash: txHash || null,
+    txHash,
     agentWallet: input.agentWallet ?? null,
     tier: 'deep',
     reportData: JSON.stringify(deepReport),

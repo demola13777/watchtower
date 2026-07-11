@@ -3,69 +3,78 @@
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Rate Limiter (In-Memory)
-// NOTE: Resets on serverless cold starts. For production, use Redis or SQLite.
+// Durable fixed-window rate limiter. Keys are hashed before storage so the
+// database does not retain raw IP addresses or wallet identifiers.
 // ---------------------------------------------------------------------------
-const rateLimitMap = new Map<string, number[]>();
+import crypto from 'crypto';
+import { db } from '@/lib/db';
+import { rateLimits, scans, agents } from '@/lib/db/schema';
+import { and, eq, lt, sql } from 'drizzle-orm';
+
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 10;
 
-export function isRateLimited(key: string): boolean {
+export async function isRateLimited(key: string): Promise<boolean> {
   const now = Date.now();
-  const timestamps = rateLimitMap.get(key) || [];
-  const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX) {
-    rateLimitMap.set(key, recent);
-    return true;
+  const bucketStart = Math.floor(now / RATE_LIMIT_WINDOW_MS) * RATE_LIMIT_WINDOW_MS;
+  const bucketId = crypto
+    .createHash('sha256')
+    .update(`${bucketStart}:${key}`)
+    .digest('hex');
+
+  await db.insert(rateLimits)
+    .values({ id: bucketId, count: 1, expiresAt: bucketStart + RATE_LIMIT_WINDOW_MS })
+    .onConflictDoUpdate({
+      target: rateLimits.id,
+      set: { count: sql`${rateLimits.count} + 1` },
+    });
+
+  const [record] = await db.select({ count: rateLimits.count })
+    .from(rateLimits)
+    .where(eq(rateLimits.id, bucketId))
+    .limit(1);
+
+  if (bucketStart % (RATE_LIMIT_WINDOW_MS * 15) === 0) {
+    await db.delete(rateLimits).where(lt(rateLimits.expiresAt, now)).catch(() => undefined);
   }
-  recent.push(now);
-  rateLimitMap.set(key, recent);
-  return false;
+
+  return (record?.count ?? RATE_LIMIT_MAX + 1) > RATE_LIMIT_MAX;
 }
 
 // ---------------------------------------------------------------------------
 // F2: Rate limit key extraction — prefer IP, fallback to agentWallet
 // ---------------------------------------------------------------------------
 export function getRateLimitKey(request: Request, agentWallet?: string): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  const ip = forwarded?.split(',')[0]?.trim();
+  const ip = request.headers.get('x-vercel-forwarded-for')?.trim()
+    || request.headers.get('x-real-ip')?.trim();
   return ip || agentWallet || 'anonymous';
 }
 
 // ---------------------------------------------------------------------------
 // Agent Metrics Tracking (F6/H6)
 // ---------------------------------------------------------------------------
-import { db } from '@/lib/db';
-import { scans, agents } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
-
 export async function trackAgentMetrics(agentWallet: string, tokenAddress: string, chainId: string) {
-  const existingAgent = await db.select().from(agents).where(eq(agents.wallet, agentWallet)).limit(1);
+  // Check if the agent previously ignored an ABORT recommendation for this token.
+  const previousWarnings = await db.select().from(scans).where(
+    and(
+      eq(scans.agentWallet, agentWallet),
+      eq(scans.chainId, chainId),
+      eq(scans.tokenAddress, tokenAddress),
+      eq(scans.recommendation, 'ABORT')
+    )
+  ).limit(1);
 
-  if (existingAgent.length > 0) {
-    const previousWarnings = await db.select().from(scans).where(
-      and(
-        eq(scans.agentWallet, agentWallet),
-        eq(scans.chainId, chainId),
-        eq(scans.tokenAddress, tokenAddress),
-        eq(scans.recommendation, 'ABORT')
-      )
-    ).limit(1);
+  const isReckless = previousWarnings.length > 0;
 
-    if (previousWarnings.length > 0) {
-      await db.update(agents)
-        .set({
-          totalScans: sql`total_scans + 1`,
-          recklessTrades: sql`reckless_trades + 1`,
-        })
-        .where(eq(agents.wallet, agentWallet));
-    } else {
-      await db.update(agents)
-        .set({ totalScans: sql`total_scans + 1` })
-        .where(eq(agents.wallet, agentWallet));
-    }
-  } else {
-    await db.insert(agents).values({ wallet: agentWallet, totalScans: 1, recklessTrades: 0 });
-  }
+  // Atomic upsert — avoids the TOCTOU race where two concurrent requests for
+  // the same new wallet both see "not found" and both try to INSERT.
+  await db.insert(agents)
+    .values({ wallet: agentWallet, totalScans: 1, recklessTrades: isReckless ? 1 : 0 })
+    .onConflictDoUpdate({
+      target: agents.wallet,
+      set: {
+        totalScans: sql`total_scans + 1`,
+        ...(isReckless ? { recklessTrades: sql`reckless_trades + 1` } : {}),
+      },
+    });
 }

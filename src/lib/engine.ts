@@ -285,9 +285,11 @@ async function liquidityModule(address: string, chainId: string): Promise<Module
 async function contractDnaModule(address: string, chainId: string): Promise<ModuleResult> {
   const mod: ModuleResult = { name: 'Contract DNA Scanner', score: 0, maxScore: 40, signals: [], status: 'active' };
 
+  // Demo honeypot fixture — only active outside mainnet production.
   if (
+    process.env.NEXT_PUBLIC_NETWORK_ENV !== 'mainnet' &&
     chainId === '1952' &&
-    address.toLowerCase() === '0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D'.toLowerCase()
+    address.toLowerCase() === '0x2498a8fda4f689c2a4a86767468ff24deab24e3d'
   ) {
     mod.score = 40;
     mod.signals.push('CRITICAL: Demo honeypot contract blocks non-owner sells on X Layer Testnet');
@@ -703,12 +705,17 @@ export async function submitScanProof(
     return null;
   }
 
+  if (!isValidEthAddress(REGISTRY_ADDRESS)) {
+    console.error('[WatchTower] No valid registry address configured for on-chain submission');
+    return null;
+  }
+
   try {
-    const { createWalletClient, http } = await import('viem');
+    const { createPublicClient, createWalletClient, http } = await import('viem');
     const { privateKeyToAccount } = await import('viem/accounts');
     const { defineChain } = await import('viem');
     
-    const xLayerTestnet = defineChain({
+    const registryChain = defineChain({
       id: Number(REGISTRY_CHAIN_ID),
       name: REGISTRY_CHAIN_ID === '196' ? 'X Layer Mainnet' : 'X Layer Testnet',
       network: REGISTRY_CHAIN_ID === '196' ? 'xlayer-mainnet' : 'xlayer-testnet',
@@ -716,7 +723,9 @@ export async function submitScanProof(
       rpcUrls: {
         default: {
           http: [
+            (REGISTRY_CHAIN_ID === '196' ? process.env.MAINNET_RPC_URL : process.env.TESTNET_RPC_URL) ||
             process.env.XLAYER_RPC_URL ||
+            process.env.NEXT_PUBLIC_REGISTRY_RPC_URL ||
             (REGISTRY_CHAIN_ID === '196' ? 'https://rpc.xlayer.tech' : 'https://testrpc.xlayer.tech'),
           ],
         },
@@ -728,8 +737,12 @@ export async function submitScanProof(
     );
     const client = createWalletClient({
       account,
-      chain: xLayerTestnet,
+      chain: registryChain,
       transport: http()
+    });
+    const publicClient = createPublicClient({
+      chain: registryChain,
+      transport: http(),
     });
 
     const abi = [
@@ -764,7 +777,12 @@ export async function submitScanProof(
       args: [BigInt(chainId), tokenAddress as `0x${string}`, scanHash, BigInt(threatScore)]
     });
 
-    console.log(`[WatchTower] On-chain proof submitted. TxHash: ${txHash}`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== 'success') {
+      throw new Error(`Registry transaction ${txHash} reverted.`);
+    }
+
+    console.log(`[WatchTower] On-chain proof confirmed. TxHash: ${txHash}`);
     return txHash;
   } catch (err) {
     console.error(`[WatchTower] Failed to submit to blockchain:`, err);

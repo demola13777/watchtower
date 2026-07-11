@@ -37,6 +37,8 @@ export const payments = sqliteTable('payments', {
   paymentPayload: text('payment_payload'),
   settlementTxHash: text('settlement_tx_hash'),
   failureReason: text('failure_reason'),
+  responsePayload: text('response_payload'),
+  completedAt: integer('completed_at'),
   createdAt: integer('created_at').notNull(),
   expiresAt: integer('expires_at').notNull(),
   settledAt: integer('settled_at'),
@@ -51,6 +53,13 @@ export const usedPaymentTransactions = sqliteTable('used_payment_transactions', 
   payer: text('payer').notNull(),
   amount: text('amount').notNull(),
   tier: text('tier').notNull(),
+  paymentId: text('payment_id'),
   requestHash: text('request_hash'),
   createdAt: integer('created_at').notNull(),
+});
+
+export const rateLimits = sqliteTable('rate_limits', {
+  id: text('id').primaryKey(),
+  count: integer('count').notNull(),
+  expiresAt: integer('expires_at').notNull(),
 });

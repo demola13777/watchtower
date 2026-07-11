@@ -11,7 +11,21 @@ interface Web3PaymentRequirement {
     resource: string;
     method: string;
     tier: string;
+    paymentId?: string;
+    requestHash?: string;
     instructions: string;
+}
+export interface WatchTowerPaymentPolicy {
+    /** Exact API origin that is allowed to request automatic settlement. */
+    apiOrigin: string;
+    /** Exact EVM chain accepted for automatic settlement. */
+    chainId: number;
+    /** Exact ERC-20 contract accepted for automatic settlement. */
+    tokenAddress: string;
+    /** Exact WatchTower treasury address accepted for automatic settlement. */
+    treasuryAddress: string;
+    /** Per-request ceiling, expressed in the configured token's display units. */
+    maxAmount: string;
 }
 export interface ScanResponse {
     success: boolean;
@@ -61,10 +75,13 @@ export interface WatchTowerConfig {
     paymentPrivateKey?: `0x${string}` | string;
     /** Optional payment RPC override. Defaults to X Layer RPC for known WatchTower payment chains. */
     paymentRpcUrl?: string;
+    /** Required when paymentPrivateKey is supplied so automatic settlement is pinned to a trusted policy. */
+    paymentPolicy?: WatchTowerPaymentPolicy;
 }
 export interface WatchTowerRequestOptions {
     chainId?: string | number;
     paymentTxHash?: string;
+    paymentId?: string;
 }
 export declare class WatchTowerAbortError extends Error {
     threatScore: number;
@@ -88,6 +105,7 @@ export declare class WatchTowerClient {
     private paymentTxHash;
     private paymentPrivateKey;
     private paymentRpcUrl;
+    private paymentPolicy;
     constructor(config: WatchTowerConfig);
     /**
      * Core Middleware Interceptor.

@@ -42,10 +42,11 @@ function isHexTxHash(value: string): value is Hex {
 
 function getMinConfirmations(): bigint {
   const configured = process.env.PAYMENT_MIN_CONFIRMATIONS;
-  const zero = BigInt(0);
-  if (!configured) return zero;
-  const parsed = BigInt(configured);
-  return parsed < zero ? zero : parsed;
+  if (!configured) return BigInt(1);
+  if (!/^\d+$/.test(configured)) {
+    throw new Error('PAYMENT_MIN_CONFIRMATIONS must be a non-negative integer.');
+  }
+  return BigInt(configured);
 }
 
 export async function verifyPaymentTransaction({
@@ -105,6 +106,12 @@ export async function verifyPaymentTransaction({
   const treasuryAddress = network.treasuryAddress.toLowerCase();
   const requiredBaseUnits = parseUnits(requiredAmount, network.token.decimals);
 
+  // Scan ALL Transfer logs before deciding — a transaction may contain multiple
+  // transfers to the treasury (e.g. from a router or multi-step swap).  We need
+  // to find the first one that meets the required amount, not bail on the first
+  // match that falls short.
+  let bestMatch: { from: Address; to: Address; value: bigint } | null = null;
+
   for (const log of receipt.logs) {
     if (log.address.toLowerCase() !== tokenAddress) continue;
 
@@ -118,27 +125,36 @@ export async function verifyPaymentTransaction({
       const args = decoded.args as { from?: Address; to?: Address; value?: bigint };
       if (!args.to || !args.value || !args.from) continue;
       if (args.to.toLowerCase() !== treasuryAddress) continue;
-      if (args.value < requiredBaseUnits) {
+
+      // Found a qualifying transfer — return immediately if amount is sufficient.
+      if (args.value >= requiredBaseUnits) {
         return {
-          ok: false,
-          reason: `Payment amount too low. Required ${requiredAmount} ${network.token.symbol}.`,
+          ok: true,
+          txHash,
+          chainId,
+          payer: args.from,
+          recipient: args.to,
+          tokenAddress: network.token.address,
+          amount: args.value,
+          amountFormatted: formatUnits(args.value, network.token.decimals),
+          blockNumber: receipt.blockNumber,
         };
       }
 
-      return {
-        ok: true,
-        txHash,
-        chainId,
-        payer: args.from,
-        recipient: args.to,
-        tokenAddress: network.token.address,
-        amount: args.value,
-        amountFormatted: formatUnits(args.value, network.token.decimals),
-        blockNumber: receipt.blockNumber,
-      };
+      // Track the largest insufficient transfer so we can give a useful error.
+      if (!bestMatch || args.value > bestMatch.value) {
+        bestMatch = { from: args.from, to: args.to, value: args.value };
+      }
     } catch {
       continue;
     }
+  }
+
+  if (bestMatch) {
+    return {
+      ok: false,
+      reason: `Payment amount too low. Required ${requiredAmount} ${network.token.symbol}, received ${formatUnits(bestMatch.value, network.token.decimals)} ${network.token.symbol}.`,
+    };
   }
 
   return {

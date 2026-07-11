@@ -54,7 +54,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="antialiased bg-slate-950 text-slate-50">{children}</body>
+      <body className="antialiased bg-slate-950 text-slate-50 relative selection:bg-cyan-500/30">
+        <div className="fixed inset-0 bg-cyber-grid opacity-30 pointer-events-none z-[-1]" />
+        <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-950/95 to-slate-900/95 pointer-events-none z-[-1]" />
+        {children}
+      </body>
     </html>
   );
 }

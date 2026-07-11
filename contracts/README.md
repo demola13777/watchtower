@@ -36,9 +36,9 @@ forge test
 
 ```bash
 forge script script/DeployWatchTowerRegistry.s.sol:DeployWatchTowerRegistry \
-  --rpc-url $TESTNET_RPC_URL \
+  --rpc-url $MAINNET_RPC_URL \
   --broadcast \
   --slow
 ```
 
-The deploy script reads `PRIVATE_KEY` from the environment.
+The deploy script reads `PRIVATE_KEY` from the environment. For mainnet, use a controlled deployment key, verify the deployed source on the selected explorer, transfer ownership to the production signer or multisig, and record the deployed address in `NEXT_PUBLIC_REGISTRY_ADDRESS` with `NEXT_PUBLIC_REGISTRY_CHAIN_ID=196`.

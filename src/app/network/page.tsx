@@ -18,6 +18,16 @@ const erc20TransferAbi = [
   },
 ] as const;
 
+const erc20BalanceAbi = [
+  {
+    type: 'function',
+    name: 'balanceOf',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
 // Module animation stages
 const SCAN_MODULES = [
   { name: 'Liquidity Intelligence', icon: 'activity', color: 'text-cyan-400', bgColor: 'bg-cyan-400' },
@@ -39,6 +49,7 @@ interface Web3PaymentRequirement {
   resource: string;
   method: string;
   tier: string;
+  paymentId?: string;
   instructions: string;
 }
 
@@ -125,8 +136,31 @@ async function settlePaymentWithWallet(requirement: Web3PaymentRequirement): Pro
 
   await ensureWalletChain(provider, requirement);
 
-  const { encodeFunctionData, parseUnits } = await import('viem');
+  const { encodeFunctionData, formatUnits, parseUnits } = await import('viem');
   const amount = parseUnits(requirement.amount, requirement.tokenDecimals);
+  const balanceCallData = encodeFunctionData({
+    abi: erc20BalanceAbi,
+    functionName: 'balanceOf',
+    args: [account as `0x${string}`],
+  });
+  const [tokenBalanceHex, nativeBalanceHex] = await Promise.all([
+    provider.request<string>({
+      method: 'eth_call',
+      params: [{ to: requirement.tokenAddress, data: balanceCallData }, 'latest'],
+    }),
+    provider.request<string>({ method: 'eth_getBalance', params: [account, 'latest'] }),
+  ]);
+
+  const tokenBalance = BigInt(tokenBalanceHex);
+  if (tokenBalance < amount) {
+    throw new Error(
+      `Selected wallet has ${formatUnits(tokenBalance, requirement.tokenDecimals)} ${requirement.currency}, but ${requirement.amount} ${requirement.currency} is required.`,
+    );
+  }
+  if (BigInt(nativeBalanceHex) === BigInt(0)) {
+    throw new Error('Selected wallet has no OKB for the X Layer network fee. Add a small amount of native gas and try again.');
+  }
+
   const data = encodeFunctionData({
     abi: erc20TransferAbi,
     functionName: 'transfer',
@@ -284,11 +318,13 @@ export default function Dashboard() {
     try {
       const payload = JSON.stringify({ tokenAddress: addressValidation.address, agentWallet: '0x000000000000000000000000000000000000dA5b' });
 
-      const submitDeepScan = (paymentTxHash?: string) => fetch('/api/scan/deep', {
+      const submitDeepScan = (paymentTxHash?: string, paymentId?: string) => fetch('/api/scan/deep', {
         method: 'POST',
-        headers: paymentTxHash
-          ? { 'Content-Type': 'application/json', Authorization: `L402 ${paymentTxHash}` }
-          : { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(paymentTxHash ? { Authorization: `L402 ${paymentTxHash}` } : {}),
+          ...(paymentId ? { 'X-WatchTower-Payment-Id': paymentId } : {}),
+        },
         body: payload,
       });
 
@@ -300,11 +336,14 @@ export default function Dashboard() {
         if (!requirement) {
           throw new Error('Payment challenge missing PAYMENT-REQUIRED details.');
         }
+        if (!requirement.paymentId) {
+          throw new Error('Payment challenge is missing its request-bound payment id. Refresh and try again.');
+        }
         setPaymentRequirement(requirement);
         setScanError(`Confirm ${requirement.amount} ${requirement.currency} in your wallet to unlock this Deep Scan.`);
         const txHash = await settlePaymentWithWallet(requirement);
         setScanError('Payment confirmed. Finalizing scan...');
-        res = await submitDeepScan(txHash);
+        res = await submitDeepScan(txHash, requirement.paymentId);
       }
       const data = await res.json();
       clearInterval(moduleTimer);
@@ -312,13 +351,21 @@ export default function Dashboard() {
 
       if (data.success) {
         setScanResult(data.data);
+        setScanError('');
         fetchTelemetry(); // Refresh stats
       } else {
         setScanError(data.message || data.error || 'Scan failed');
       }
     } catch (error) {
       clearInterval(moduleTimer);
-      setScanError(error instanceof Error ? error.message : 'Network error - is the server running?');
+      const walletErrorCode = typeof error === 'object' && error !== null && 'code' in error
+        ? Number((error as { code: unknown }).code)
+        : undefined;
+      setScanError(
+        walletErrorCode === 4001
+          ? 'Payment approval was cancelled in your wallet.'
+          : error instanceof Error ? error.message : 'Network error - is the server running?',
+      );
     } finally {
       clearInterval(moduleTimer);
       setScanning(false);
@@ -326,7 +373,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-300 font-sans selection:bg-cyan-500/30">
+    <div className="min-h-screen text-slate-300 font-sans">
       {/* Navbar */}
       <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -353,10 +400,10 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-6 sm:space-y-8 animate-fade-in-up delay-100">
         
         {/* "Try It" Scanner */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-slate-900/80 to-slate-900/50 border border-slate-800 backdrop-blur-sm">
+        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md hover:border-cyan-500/30 transition-all hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]">
           <div className="flex items-center gap-3 mb-4">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 flex items-center justify-center">
               <Search className="h-5 w-5 text-cyan-400" />
@@ -373,7 +420,7 @@ export default function Dashboard() {
               value={scanAddress}
               onChange={(e) => { setScanAddress(e.target.value.trim()); setScanError(''); setPaymentRequirement(null); }}
               placeholder="0x... (e.g. 0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D)"
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:shadow-[0_0_15px_rgba(6,182,212,0.1)] transition-all"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:shadow-[0_0_20px_rgba(6,182,212,0.2)] transition-all"
               disabled={scanning}
               onKeyDown={(e) => e.key === 'Enter' && !scanning && handleScan()}
             />
@@ -469,19 +516,13 @@ export default function Dashboard() {
                   Confidence: {scanResult.chainResolution.confidence}
                 </span>
               </div>
-              {scanResult.verification?.txHash && (
-                <div className="mt-2 text-xs text-slate-500 font-mono flex items-center gap-1.5">
-                  <Shield className="h-3 w-3 text-emerald-500" />
-                  On-chain: {scanResult.verification.txHash.substring(0, 20)}...
-                </div>
-              )}
             </div>
           )}
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-sm relative overflow-hidden group">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-fade-in-up delay-200">
+          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-cyan-500/30 hover:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-all">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex items-center justify-between mb-4">
               <div className="h-10 w-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center">
@@ -492,7 +533,7 @@ export default function Dashboard() {
             <div className="text-3xl font-black text-white">{telemetry?.totalScans || 0}</div>
           </div>
 
-          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-sm relative overflow-hidden group">
+          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-rose-500/30 hover:shadow-[0_4px_20px_rgba(244,63,94,0.1)] transition-all">
             <div className="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex items-center justify-between mb-4">
               <div className="h-10 w-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center">
@@ -503,7 +544,7 @@ export default function Dashboard() {
             <div className="text-3xl font-black text-rose-500">{telemetry?.threatsBlocked || 0}</div>
           </div>
 
-          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-sm relative overflow-hidden group">
+          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-emerald-500/30 hover:shadow-[0_4px_20px_rgba(16,185,129,0.1)] transition-all">
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex items-center justify-between mb-4">
               <div className="h-10 w-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center">
@@ -514,7 +555,7 @@ export default function Dashboard() {
             <div className="text-3xl font-black text-emerald-400">{telemetry?.revenue?.toFixed(2) || "0.00"}</div>
           </div>
 
-          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-sm relative overflow-hidden group">
+          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-purple-500/30 hover:shadow-[0_4px_20px_rgba(168,85,247,0.1)] transition-all">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex items-center justify-between mb-4">
               <div className="h-10 w-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center">
@@ -529,7 +570,7 @@ export default function Dashboard() {
 
 
         {/* Live Feed */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-sm min-h-[400px]">
+        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md min-h-[400px] animate-fade-in-up delay-300">
            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-6">
              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
               <Database className="h-5 w-5 text-cyan-400" />
@@ -559,7 +600,7 @@ export default function Dashboard() {
                </div>
                
                {telemetry.latestScans.map((scan) => (
-                 <div key={scan.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-start md:items-center rounded-xl bg-slate-950 border border-slate-800/50 hover:border-slate-700 transition-colors group">
+                 <div key={scan.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-start md:items-center rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-500/30 hover:bg-slate-900/80 transition-colors shadow-inner group">
                    <div className="md:col-span-2">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Action</div>
                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold ${scan.recommendation === 'ABORT' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' : scan.recommendation === 'CAUTION' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'}`}>
@@ -667,7 +708,7 @@ export default function Dashboard() {
         </div>
 
         {/* Agent Leaderboard */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-sm">
+        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md animate-fade-in-up delay-400">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-6">
               <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-amber-400" />
@@ -715,10 +756,10 @@ export default function Dashboard() {
                 return (
                   <div
                     key={agent.agentWallet}
-                    className={`grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-start md:items-center rounded-xl border transition-colors group ${
+                    className={`grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-start md:items-center rounded-xl border transition-colors shadow-inner group ${
                       isTopThree
-                        ? 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:shadow-sm'
-                        : 'bg-slate-950/50 border-slate-800/50 hover:border-slate-700'
+                        ? 'bg-slate-950/80 border-slate-700 hover:border-amber-500/40 hover:bg-slate-900/90'
+                        : 'bg-slate-950/40 border-slate-800/50 hover:border-cyan-500/30 hover:bg-slate-900/80'
                     }`}
                   >
                     <div className="md:col-span-1">

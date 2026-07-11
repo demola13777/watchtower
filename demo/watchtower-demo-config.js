@@ -22,15 +22,44 @@ function getApiUrl() {
   return process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
 }
 
+function getNetworkPrefix() {
+  const networkEnv = process.env.NEXT_PUBLIC_NETWORK_ENV || 'testnet';
+  return networkEnv === 'mainnet' ? 'MAINNET' : networkEnv === 'development' ? 'DEV' : 'TESTNET';
+}
+
 function getDemoChainId() {
-  return process.env.WATCHTOWER_DEMO_CHAIN_ID || process.env.TESTNET_CHAIN_ID || '1952';
+  const prefix = getNetworkPrefix();
+  const fallbackChainId = prefix === 'MAINNET' ? '196' : '1952';
+  return process.env.WATCHTOWER_DEMO_CHAIN_ID || process.env[`${prefix}_CHAIN_ID`] || fallbackChainId;
 }
 
 function getPaymentRpcUrl() {
+  const prefix = getNetworkPrefix();
   return process.env.AGENT_PAYMENT_RPC_URL
-    || process.env.TESTNET_RPC_URL
-    || process.env.XLAYER_TESTNET_RPC_URL
+    || process.env[`${prefix}_RPC_URL`]
+    || (prefix === 'MAINNET' ? process.env.XLAYER_RPC_URL : process.env.XLAYER_TESTNET_RPC_URL)
     || process.env.XLAYER_RPC_URL;
+}
+
+function getPaymentPolicy() {
+  const prefix = getNetworkPrefix();
+  const treasuryAddress = getRequiredEnv(
+    `${prefix}_TREASURY_ADDRESS`,
+    `Missing ${prefix}_TREASURY_ADDRESS for the automatic payment policy.`,
+  );
+  const tokenAddress = getRequiredEnv(
+    `${prefix}_USDT_ADDRESS`,
+    `Missing ${prefix}_USDT_ADDRESS for the automatic payment policy.`,
+  );
+  const chainId = Number(process.env[`${prefix}_CHAIN_ID`] || getDemoChainId());
+
+  return {
+    apiOrigin: new URL(getApiUrl()).origin,
+    chainId,
+    tokenAddress,
+    treasuryAddress,
+    maxAmount: process.env.AGENT_PAYMENT_MAX_AMOUNT || '1',
+  };
 }
 
 function normalizePrivateKey(privateKey) {
@@ -48,6 +77,7 @@ async function createAgentConfig() {
     chainId: getDemoChainId(),
     paymentPrivateKey,
     paymentRpcUrl: getPaymentRpcUrl(),
+    paymentPolicy: getPaymentPolicy(),
   };
 }
 

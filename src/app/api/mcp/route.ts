@@ -1,8 +1,10 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { createWatchTowerMcpServer } from './mcp-server';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { createPaymentRequestHash, paymentRequiredResponse, requirePayment, setPaymentResponseHeader, type PaymentReceipt } from '@/lib/payment';
+import { claimPaymentProcessing, completePayment, createPaymentRequestHash, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader, type PaymentReceipt } from '@/lib/payment';
 import { scanRequestSchema } from '@/lib/validation';
+import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
+import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 
 // ---------------------------------------------------------------------------
 // MCP Route Handler — Streamable HTTP Transport
@@ -70,6 +72,24 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
         ),
       };
     }
+
+    try {
+      await resolveScanChain(parsed.data);
+    } catch (error) {
+      const message = error instanceof ChainResolutionError
+        ? error.message
+        : 'Unable to resolve the requested token chain.';
+      return {
+        response: new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            error: { code: -32602, message },
+            id: call.id ?? null,
+          }),
+          { status: 422, headers: { 'Content-Type': 'application/json' } },
+        ),
+      };
+    }
   }
 
   const requiresDeepScan = toolNames.includes('deep_scan_token');
@@ -95,14 +115,39 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
 
 // Instantiate a new MCP server for each request.
 export async function POST(req: Request): Promise<Response> {
+  let claimedPaymentId: string | null = null;
   try {
+    if (await isRateLimited(getRateLimitKey(req))) {
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', error: { code: -32029, message: 'Rate limit exceeded. Retry shortly.' }, id: null }),
+        { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '60' } },
+      );
+    }
+
     const paymentResult = await requireMcpToolPayment(req);
     if (paymentResult.response) return paymentResult.response;
 
     // Create a new server instance per request.
     // In stateless HTTP, the transport is unique to the request,
     // and an MCP server can only connect to one transport at a time.
-    const server = createWatchTowerMcpServer();
+    if (paymentResult.receipt) {
+      const claim = await claimPaymentProcessing(paymentResult.receipt.paymentId);
+      if (claim.state === 'completed') {
+        return setPaymentResponseHeader(
+          new Response(claim.responsePayload, { headers: { 'Content-Type': 'application/json' } }),
+          paymentResult.receipt,
+        );
+      }
+      if (claim.state === 'processing') {
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', error: { code: -32009, message: 'Your paid tool call is already processing. Retry shortly.' }, id: null }),
+          { status: 409, headers: { 'Content-Type': 'application/json', 'Retry-After': '2' } },
+        );
+      }
+      claimedPaymentId = paymentResult.receipt.paymentId;
+    }
+
+    const server = createWatchTowerMcpServer(paymentResult.receipt?.payer);
 
     // Create a stateless transport for this request
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -117,10 +162,15 @@ export async function POST(req: Request): Promise<Response> {
     // Clean up
     await server.close();
 
-    return paymentResult.receipt
-      ? setPaymentResponseHeader(response, paymentResult.receipt)
-      : response;
+    if (!paymentResult.receipt) return response;
+
+    const responsePayload = await response.clone().text();
+    await completePayment(paymentResult.receipt.paymentId, responsePayload);
+    return setPaymentResponseHeader(response, paymentResult.receipt);
   } catch (error: unknown) {
+    if (claimedPaymentId) {
+      await releasePaymentProcessing(claimedPaymentId, error instanceof Error ? error.message : 'MCP tool processing failed.').catch(() => undefined);
+    }
     console.error('[WatchTower MCP] Route error:', error);
     return new Response(
       JSON.stringify({

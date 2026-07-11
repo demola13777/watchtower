@@ -1,4 +1,5 @@
 const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
+const PAYMENT_ID_HEADER = 'X-WatchTower-Payment-Id';
 
 interface Web3PaymentRequirement {
   x402Version: number;
@@ -13,7 +14,22 @@ interface Web3PaymentRequirement {
   resource: string;
   method: string;
   tier: string;
+  paymentId?: string;
+  requestHash?: string;
   instructions: string;
+}
+
+export interface WatchTowerPaymentPolicy {
+  /** Exact API origin that is allowed to request automatic settlement. */
+  apiOrigin: string;
+  /** Exact EVM chain accepted for automatic settlement. */
+  chainId: number;
+  /** Exact ERC-20 contract accepted for automatic settlement. */
+  tokenAddress: string;
+  /** Exact WatchTower treasury address accepted for automatic settlement. */
+  treasuryAddress: string;
+  /** Per-request ceiling, expressed in the configured token's display units. */
+  maxAmount: string;
 }
 
 function decodeBase64Json<T>(value: string): T | null {
@@ -73,11 +89,14 @@ export interface WatchTowerConfig {
   paymentPrivateKey?: `0x${string}` | string;
   /** Optional payment RPC override. Defaults to X Layer RPC for known WatchTower payment chains. */
   paymentRpcUrl?: string;
+  /** Required when paymentPrivateKey is supplied so automatic settlement is pinned to a trusted policy. */
+  paymentPolicy?: WatchTowerPaymentPolicy;
 }
 
 export interface WatchTowerRequestOptions {
   chainId?: string | number;
   paymentTxHash?: string;
+  paymentId?: string;
 }
 
 export class WatchTowerAbortError extends Error {
@@ -123,6 +142,7 @@ export class WatchTowerClient {
   private paymentTxHash: string | undefined;
   private paymentPrivateKey: string | undefined;
   private paymentRpcUrl: string | undefined;
+  private paymentPolicy: WatchTowerPaymentPolicy | undefined;
 
   constructor(config: WatchTowerConfig) {
     this.apiUrl = config.apiUrl;
@@ -132,6 +152,11 @@ export class WatchTowerClient {
     this.paymentTxHash = config.paymentTxHash;
     this.paymentPrivateKey = config.paymentPrivateKey;
     this.paymentRpcUrl = config.paymentRpcUrl;
+    this.paymentPolicy = config.paymentPolicy;
+
+    if (this.paymentPrivateKey && !this.paymentPolicy) {
+      throw new Error('paymentPolicy is required when paymentPrivateKey enables automatic settlement.');
+    }
   }
 
   /**
@@ -154,7 +179,7 @@ export class WatchTowerClient {
     };
     if (options.chainId) payload.chainId = options.chainId;
 
-    const headers = this.createHeaders(options.paymentTxHash);
+    const headers = this.createHeaders(options.paymentTxHash, options.paymentId);
 
     let res = await fetch(`${this.apiUrl}/api/scan`, {
       method: 'POST',
@@ -167,7 +192,7 @@ export class WatchTowerClient {
       const txHash = await this.settlePayment(requirement);
       res = await fetch(`${this.apiUrl}/api/scan`, {
         method: 'POST',
-        headers: this.createHeaders(txHash),
+        headers: this.createHeaders(txHash, requirement.paymentId),
         body: JSON.stringify(payload),
       });
     }
@@ -181,6 +206,10 @@ export class WatchTowerClient {
     if (!success || !data) {
       throw new Error(error || 'Failed to scan token');
     }
+
+    // A settlement hash authorizes exactly one request. Never carry it into a
+    // later scan made by the same long-lived client instance.
+    this.paymentTxHash = undefined;
 
     // Configurable Kill Switch — use client-side threshold, not just server recommendation
     if (data.threatScore > this.threshold) {
@@ -216,7 +245,7 @@ export class WatchTowerClient {
     };
     if (options.chainId) payload.chainId = options.chainId;
 
-    const headers = this.createHeaders(options.paymentTxHash);
+    const headers = this.createHeaders(options.paymentTxHash, options.paymentId);
 
     let res = await fetch(`${this.apiUrl}/api/scan/deep`, {
       method: 'POST',
@@ -229,7 +258,7 @@ export class WatchTowerClient {
       const txHash = await this.settlePayment(requirement);
       res = await fetch(`${this.apiUrl}/api/scan/deep`, {
         method: 'POST',
-        headers: this.createHeaders(txHash),
+        headers: this.createHeaders(txHash, requirement.paymentId),
         body: JSON.stringify(payload),
       });
     }
@@ -244,19 +273,23 @@ export class WatchTowerClient {
       throw new Error(error || 'Failed to run deep scan');
     }
 
+    this.paymentTxHash = undefined;
+
     return data as DeepScanResponse;
   }
 
   private normalizeOptions(
     chainIdOrOptions: string | number | WatchTowerRequestOptions | undefined,
-  ): { chainId?: string; paymentTxHash?: string } {
-    const normalized: { chainId?: string; paymentTxHash?: string } = {};
+  ): { chainId?: string; paymentTxHash?: string; paymentId?: string } {
+    const normalized: { chainId?: string; paymentTxHash?: string; paymentId?: string } = {};
 
     if (typeof chainIdOrOptions === 'object' && chainIdOrOptions !== null) {
       const chainId = chainIdOrOptions.chainId === undefined ? this.chainId : String(chainIdOrOptions.chainId);
       const paymentTxHash = chainIdOrOptions.paymentTxHash ?? this.paymentTxHash;
+      const paymentId = chainIdOrOptions.paymentId;
       if (chainId !== undefined) normalized.chainId = chainId;
       if (paymentTxHash !== undefined) normalized.paymentTxHash = paymentTxHash;
+      if (paymentId !== undefined) normalized.paymentId = paymentId;
       return normalized;
     }
 
@@ -265,11 +298,12 @@ export class WatchTowerClient {
     return normalized;
   }
 
-  private createHeaders(paymentTxHash?: string): Record<string, string> {
+  private createHeaders(paymentTxHash?: string, paymentId?: string): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (paymentTxHash) {
       headers.Authorization = `L402 ${paymentTxHash}`;
     }
+    if (paymentId) headers[PAYMENT_ID_HEADER] = paymentId;
     return headers;
   }
 
@@ -301,6 +335,29 @@ export class WatchTowerClient {
       import('viem'),
       import('viem/accounts'),
     ]);
+
+    const policy = this.paymentPolicy;
+    if (!policy) throw new Error('Automatic settlement requires a paymentPolicy.');
+    if (new URL(this.apiUrl).origin !== new URL(policy.apiOrigin).origin) {
+      throw new Error('WatchTower API origin does not match the configured payment policy.');
+    }
+    if (requirement.scheme !== 'evm-erc20-transfer' || requirement.chainId !== policy.chainId) {
+      throw new Error('Payment challenge does not match the configured chain or scheme.');
+    }
+    if (requirement.tokenAddress.toLowerCase() !== policy.tokenAddress.toLowerCase()) {
+      throw new Error('Payment challenge token does not match the configured payment policy.');
+    }
+    if (requirement.payTo.toLowerCase() !== policy.treasuryAddress.toLowerCase()) {
+      throw new Error('Payment challenge treasury does not match the configured payment policy.');
+    }
+    if (!requirement.paymentId) {
+      throw new Error('Payment challenge is missing a request-bound payment id.');
+    }
+    const maxAmount = parseUnits(policy.maxAmount, requirement.tokenDecimals);
+    const requestedAmount = parseUnits(requirement.amount, requirement.tokenDecimals);
+    if (requestedAmount > maxAmount) {
+      throw new Error(`Payment challenge exceeds the configured maximum of ${policy.maxAmount} ${requirement.currency}.`);
+    }
 
     const rpcUrl = this.getPaymentRpcUrl(requirement);
     const chain = defineChain({
@@ -334,7 +391,7 @@ export class WatchTowerClient {
         stateMutability: 'view',
       },
     ] as const;
-    const amount = parseUnits(requirement.amount, requirement.tokenDecimals);
+    const amount = requestedAmount;
     const tokenBalance = await publicClient.readContract({
       address: requirement.tokenAddress as `0x${string}`,
       abi: erc20TransferAbi,
@@ -377,8 +434,10 @@ export class WatchTowerClient {
         amount,
       ],
     });
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
-    this.paymentTxHash = txHash;
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== 'success') {
+      throw new Error('Payment transaction reverted on-chain.');
+    }
     return txHash;
   }
 }

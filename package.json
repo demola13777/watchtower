@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test:payments": "node scripts/test-x402-web3.js",
+    "test:payments:negative-mainnet": "node scripts/test-mainnet-payment-rejections.mjs",
+    "validate:mainnet": "node scripts/validate-mainnet-config.mjs",
+    "reconcile:payments": "node scripts/reconcile-mainnet-payments.mjs",
     "db:push": "npx drizzle-kit push",
     "db:generate": "npx drizzle-kit generate"
   },

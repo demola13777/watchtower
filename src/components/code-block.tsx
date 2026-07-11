@@ -13,8 +13,15 @@ export function CodeBlock({ children, language = "bash" }: { children: string; l
   };
 
   const renderCode = (code: string) => {
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
     if (language === "bash") {
-      return code.split('\n').map((line, i) => {
+      return escapedCode.split('\n').map((line, i) => {
         const highlighted = line
           .replace(/^(npm|cd|cp)/, '<span class="text-cyan-400">$1</span>')
           .replace(/(install|build|run|dev)/, '<span class="text-purple-400">$1</span>');
@@ -24,7 +31,7 @@ export function CodeBlock({ children, language = "bash" }: { children: string; l
     }
     
     // JS/TS Fallback
-    return code.split('\n').map((line, i) => {
+    return escapedCode.split('\n').map((line, i) => {
       const highlighted = line
         .replace(/\b(const|let|var|import|from|try|catch|if|else|await|async|new|throw)\b/g, '<span class="text-purple-400">$1</span>')
         .replace(/\b(function|return|console|process|navigator)\b/g, '<span class="text-cyan-400">$1</span>')

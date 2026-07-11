@@ -15,13 +15,19 @@
 const MCP_ENDPOINT = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
 const MCP_URL = `${MCP_ENDPOINT}/api/mcp`;
 const PAYER = '0x0000000000000000000000000000000000000C99';
+const ACTIVE_CHAIN_ID = process.env.WATCHTOWER_DEMO_CHAIN_ID
+  || (process.env.NEXT_PUBLIC_NETWORK_ENV === 'mainnet' ? '196' : '1952');
 const PAYMENT_TEST_TX_HASHES = (process.env.PAYMENT_TEST_TX_HASHES || process.env.PAYMENT_TEST_TX_HASH || '')
   .split(',')
   .map((hash) => hash.trim())
   .filter(Boolean);
+const PAYMENT_TEST_PAYMENT_IDS = (process.env.PAYMENT_TEST_PAYMENT_IDS || process.env.PAYMENT_TEST_PAYMENT_ID || '')
+  .split(',')
+  .map((paymentId) => paymentId.trim())
+  .filter(Boolean);
 let paymentHashIndex = 0;
 
-// Known malicious token (deployed on X Layer Testnet for demo)
+// Override this with WATCHTOWER_DEMO_TOKEN when running against a specific network.
 const MALICIOUS_TOKEN = '0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D';
 // Known safe token (USDT on Ethereum mainnet)
 const SAFE_TOKEN = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
@@ -49,6 +55,9 @@ async function sendMcpRequest(method, params, id) {
   };
   if (method === 'tools/call' && PAYMENT_TEST_TX_HASHES[paymentHashIndex]) {
     headers.Authorization = `L402 ${PAYMENT_TEST_TX_HASHES[paymentHashIndex]}`;
+    if (PAYMENT_TEST_PAYMENT_IDS[paymentHashIndex]) {
+      headers['X-WatchTower-Payment-Id'] = PAYMENT_TEST_PAYMENT_IDS[paymentHashIndex];
+    }
     paymentHashIndex += 1;
   }
 
@@ -62,7 +71,7 @@ async function sendMcpRequest(method, params, id) {
     const encodedRequirement = res.headers.get('PAYMENT-REQUIRED');
     const requirement = encodedRequirement ? decodeBase64Json(encodedRequirement) : (await res.json()).paymentRequired;
     throw new Error(
-      `Payment required: send ${requirement.amount} ${requirement.currency} to ${requirement.payTo} on chain ${requirement.chainId}, then rerun with PAYMENT_TEST_TX_HASHES=<tx_hash_1>,<tx_hash_2>.`,
+      `Payment required: send ${requirement.amount} ${requirement.currency} to ${requirement.payTo} on chain ${requirement.chainId}, then retry this exact request with PAYMENT_TEST_TX_HASHES and PAYMENT_TEST_PAYMENT_IDS. Payment id: ${requirement.paymentId}`,
     );
   }
 
@@ -135,7 +144,7 @@ async function main() {
     name: 'scan_token',
     arguments: {
       tokenAddress: MALICIOUS_TOKEN,
-      chainId: '1952',
+      chainId: ACTIVE_CHAIN_ID,
       agentWallet: PAYER,
     },
   }, 3);

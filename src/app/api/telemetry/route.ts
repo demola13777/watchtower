@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { scans, agents } from '@/lib/db/schema';
+import { scans, agents, payments } from '@/lib/db/schema';
 import { desc, eq, count, sql } from 'drizzle-orm';
-import { SCAN_PRICING_USDT } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +28,9 @@ export async function GET(req: Request) {
     const totalScansPromise = db.select({ value: count() }).from(scans);
     const threatsBlockedPromise = db.select({ value: count() }).from(scans).where(eq(scans.recommendation, 'ABORT'));
     const activeAgentsPromise = db.select({ value: count() }).from(agents);
-    const deepScansPromise = db.select({ value: count() }).from(scans).where(eq(scans.tier, 'deep'));
+    const settledRevenuePromise = db.select({
+      value: sql<number>`COALESCE(SUM(CASE WHEN ${payments.status} IN ('settled', 'processing', 'completed') THEN CAST(${payments.amount} AS REAL) ELSE 0 END), 0)`,
+    }).from(payments);
     const leaderboardPromise = db.select({
       agentWallet: scans.agentWallet,
       totalScans: count().as('total_scans'),
@@ -47,19 +48,18 @@ export async function GET(req: Request) {
       [{ value: totalScans }],
       [{ value: threatsBlocked }],
       [{ value: activeAgents }],
-      [{ value: deepScans }],
+      [{ value: settledRevenue }],
       leaderboardRows,
     ] = await Promise.all([
       latestScansPromise,
       totalScansPromise,
       threatsBlockedPromise,
       activeAgentsPromise,
-      deepScansPromise,
+      settledRevenuePromise,
       leaderboardPromise,
     ]);
 
-    const firewallScans = totalScans - deepScans;
-    const revenue = (firewallScans * SCAN_PRICING_USDT.firewall) + (deepScans * SCAN_PRICING_USDT.deep);
+    const revenue = Number(settledRevenue ?? 0);
 
     return NextResponse.json({
       success: true,

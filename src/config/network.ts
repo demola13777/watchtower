@@ -40,7 +40,23 @@ function envNumber(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
-export const NETWORK_ENV = (process.env.NEXT_PUBLIC_NETWORK_ENV || 'testnet') as NetworkEnvironment;
+function getNetworkEnvironment(): NetworkEnvironment {
+  const configured = process.env.NEXT_PUBLIC_NETWORK_ENV;
+  if (!configured) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('NEXT_PUBLIC_NETWORK_ENV must be explicitly configured in production.');
+    }
+    return 'testnet';
+  }
+
+  if (configured === 'development' || configured === 'testnet' || configured === 'mainnet') {
+    return configured;
+  }
+
+  throw new Error(`Invalid NEXT_PUBLIC_NETWORK_ENV: ${configured}`);
+}
+
+export const NETWORK_ENV = getNetworkEnvironment();
 
 export const PAYMENT_NETWORKS: Record<NetworkEnvironment, PaymentNetworkConfig> = {
   development: {
@@ -74,7 +90,7 @@ export const PAYMENT_NETWORKS: Record<NetworkEnvironment, PaymentNetworkConfig> 
     rpcUrl: process.env.MAINNET_RPC_URL || process.env.XLAYER_RPC_URL,
     treasuryAddress: envAddress(process.env.MAINNET_TREASURY_ADDRESS || process.env.X402_PAY_TO),
     token: {
-      symbol: process.env.MAINNET_PAYMENT_TOKEN_SYMBOL || 'USDT',
+      symbol: process.env.MAINNET_PAYMENT_TOKEN_SYMBOL || 'USDT0',
       address: envAddress(process.env.MAINNET_USDT_ADDRESS || process.env.X402_TOKEN_ADDRESS),
       decimals: envNumber(process.env.MAINNET_PAYMENT_TOKEN_DECIMALS, 6),
     },
@@ -82,8 +98,7 @@ export const PAYMENT_NETWORKS: Record<NetworkEnvironment, PaymentNetworkConfig> 
 };
 
 export function getActivePaymentNetwork(): PaymentNetworkConfig {
-  const config = PAYMENT_NETWORKS[NETWORK_ENV] ?? PAYMENT_NETWORKS.testnet;
-  return config;
+  return PAYMENT_NETWORKS[NETWORK_ENV];
 }
 
 export function getRequiredPaymentNetwork(): ResolvedPaymentNetworkConfig {

@@ -117,13 +117,13 @@ export default function DocsPage() {
           <header className="pb-14">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-bold uppercase tracking-widest text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)] animate-in fade-in slide-in-from-bottom-2 duration-500">
               <BookOpen className="h-3.5 w-3.5" />
-              Developer Documentation
+              X Layer Mainnet Developer Documentation
             </div>
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 sm:text-5xl lg:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700">
-              Integrate WatchTower into an autonomous trading agent.
+              Put production-grade security in front of every autonomous trade.
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-slate-400 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-              Use the SDK for agent code, MCP for local AI desktops, REST for custom backends, and public reports when operators need verifiable receipts.
+              WatchTower is an agent-native threat-intelligence layer for X Layer Mainnet: integrate it through the SDK, MCP, or REST, then expose verified receipts when operators need an audit trail.
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row animate-in fade-in slide-in-from-bottom-5 duration-1000">
               <Link href="/#integrate" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-3.5 text-sm font-bold text-white shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] hover:-translate-y-0.5">
@@ -156,11 +156,18 @@ npm run dev`}</CodeBlock>
             <CodeBlock language="ts">{`import { WatchTowerClient, WatchTowerAbortError } from "okx-watchtower-middleware";
 
 const wt = new WatchTowerClient({
-  apiUrl: "https://watchtower.xyz",
+  apiUrl: "https://your-watchtower-domain",
   agentWallet: "0xYourAgentWallet",
   chainId: 196,
   threshold: 70,
   paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,
+  paymentPolicy: {
+    apiOrigin: "https://your-watchtower-domain",
+    chainId: 196,
+    tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
+    treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS!,
+    maxAmount: "1",
+  },
 });
 
 try {
@@ -172,7 +179,7 @@ try {
   }
 }`}</CodeBlock>
             <p>
-              Configure <InlineCode>paymentPrivateKey</InlineCode> when the agent should automatically settle x402-style payment challenges. Without it, the SDK raises a payment-required error with the challenge details.
+              Configure <InlineCode>paymentPrivateKey</InlineCode> only in a secure agent runtime. Automatic settlement also requires a <InlineCode>paymentPolicy</InlineCode> that pins the API origin, chain, token, treasury, and maximum amount. Without a key, the SDK raises a payment-required error with the challenge details.
             </p>
           </Section>
 
@@ -215,7 +222,7 @@ POST /api/scan/deep  // Tier 1, 1 USDT
             </p>
             <CodeBlock language="bash">{`Authorization: L402 <settlement_transaction_hash>`}</CodeBlock>
             <p>
-              The verifier checks transaction hash format, chain id, transaction success, token contract, treasury recipient, amount, confirmation depth, and replay status. Production can replace this service with a facilitator or signed envelope validator behind the same <InlineCode>PaymentService</InlineCode> boundary.
+              The verifier checks transaction hash format, chain id, transaction success, token contract, treasury recipient, amount, confirmation depth, and replay status. The <InlineCode>PaymentService</InlineCode> boundary keeps the current self-hosted verifier replaceable by a facilitator or signed-envelope validator without changing scan routes or agent integrations.
             </p>
           </Section>
 
@@ -225,27 +232,28 @@ POST /api/scan/deep  // Tier 1, 1 USDT
             </p>
             <CodeBlock language="ts">{`sha256(chainId:tokenAddress:threatScore:confidence:timestamp)`}</CodeBlock>
             <p>
-              The X Layer Testnet registry is <InlineCode>0x035FE9151000cd4346f4A07f5878474ea6fd21b7</InlineCode>. Use <Link href="/verify" className="text-cyan-400 hover:text-cyan-300 underline decoration-cyan-500/30 underline-offset-4">/verify</Link> to decode a registry transaction and confirm the emitted scan event.
+              The deployed registry is selected entirely through environment configuration. Use <Link href="/verify" className="text-cyan-400 hover:text-cyan-300 underline decoration-cyan-500/30 underline-offset-4">/verify</Link> to decode a configured X Layer registry transaction and confirm the emitted scan event.
             </p>
           </Section>
 
           <Section id="deploy" icon={<Database className="h-4 w-4" />} title="Deployment">
             <p>
-              Local development uses SQLite. Public Vercel deployments should use Turso/libSQL and production-grade environment variables.
+              Local development may use SQLite. A mainnet deployment uses Turso/libSQL, a dedicated X Layer RPC, an explicit registry address, and production secret management.
             </p>
             <CodeBlock language="bash">{`NEXT_PUBLIC_SITE_URL=https://watchtower.xyz
 TURSO_DATABASE_URL=libsql://...
 TURSO_AUTH_TOKEN=...
 NEXT_PUBLIC_REGISTRY_ADDRESS=0x...
-NEXT_PUBLIC_REGISTRY_CHAIN_ID=1952
-NEXT_PUBLIC_REGISTRY_RPC_URL=https://testrpc.xlayer.tech
-NEXT_PUBLIC_NETWORK_ENV=testnet
-TESTNET_RPC_URL=https://testrpc.xlayer.tech
-TESTNET_TREASURY_ADDRESS=0x...
-TESTNET_USDT_ADDRESS=0x...
-PAYMENT_MIN_CONFIRMATIONS=1`}</CodeBlock>
+NEXT_PUBLIC_REGISTRY_CHAIN_ID=196
+NEXT_PUBLIC_REGISTRY_RPC_URL=https://rpc.xlayer.tech
+NEXT_PUBLIC_NETWORK_ENV=mainnet
+MAINNET_RPC_URL=https://your-dedicated-x-layer-rpc
+MAINNET_TREASURY_ADDRESS=0x...
+MAINNET_USDT_ADDRESS=0x...
+MAINNET_PAYMENT_TOKEN_DECIMALS=6
+PAYMENT_MIN_CONFIRMATIONS=<your-confirmation-policy>`}</CodeBlock>
             <p>
-              Keep <InlineCode>PRIVATE_KEY</InlineCode> out of public repos. For production, replace server-side private-key signing with managed custody, a relayer, or KMS-backed signing.
+              Keep <InlineCode>PRIVATE_KEY</InlineCode> out of public repos. Before public mainnet traffic, use managed custody, a relayer, or KMS-backed signing for the registry writer and complete the mainnet readiness checklist in this repository.
             </p>
           </Section>
 

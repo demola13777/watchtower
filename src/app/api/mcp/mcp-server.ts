@@ -17,7 +17,7 @@ import { mcpScanInputSchema, scanRequestSchema } from '@/lib/validation';
 //   4. Single source of truth for scoring logic
 // ---------------------------------------------------------------------------
 
-export function createWatchTowerMcpServer(): McpServer {
+export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServer {
   const server = new McpServer(
     {
       name: 'watchtower',
@@ -63,7 +63,7 @@ export function createWatchTowerMcpServer(): McpServer {
       try {
         const report = await runFirewallScan({
           ...parsed.data,
-          agentWallet: parsed.data.agentWallet ?? 'mcp_agent',
+          agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? 'mcp_agent',
         });
 
         return {
@@ -116,7 +116,7 @@ export function createWatchTowerMcpServer(): McpServer {
       try {
         const deepReport = await runDeepScan({
           ...parsed.data,
-          agentWallet: parsed.data.agentWallet ?? 'mcp_agent',
+          agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? 'mcp_agent',
         });
 
         return {

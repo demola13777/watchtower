@@ -7,17 +7,10 @@ const {
 } = require("../packages/watchtower-sdk/src/index.js");
 const { createAgentConfig } = require("./watchtower-demo-config.js");
 
-// Demo DEX event: a new token pair was just created.
-const NEW_TOKEN_EVENT = {
-  tokenAddress: '0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D', // Live MaliciousRugPull on X Layer Testnet
-  pairName: 'TRAP/WETH',
-};
-
-// The dead token from our tests
-const targetToken = NEW_TOKEN_EVENT.tokenAddress;
-
 async function main() {
   const agentConfig = await createAgentConfig();
+  const targetToken = process.env.WATCHTOWER_DEMO_TOKEN || agentConfig.paymentPolicy.tokenAddress;
+  const targetChainId = process.env.WATCHTOWER_DEMO_CHAIN_ID || agentConfig.chainId;
 
   // Initialize WatchTower with a configurable threshold.
   // An arbitrage bot might set threshold: 40 (very cautious).
@@ -30,22 +23,22 @@ async function main() {
   console.log("🚀 Starting Protected Trading Agent with WatchTower SDK...");
   console.log(`👛 Agent wallet: ${agentConfig.agentWallet}`);
   console.log(`🔧 Kill Switch threshold: 60/100`);
-  console.log("📡 Listening for new token pairs on Dex...");
+  console.log("📡 Waiting for a configured token-intelligence request...");
 
   setTimeout(async () => {
-    console.log(`\n⚠️  NEW PAIR DETECTED: ${targetToken}`);
+    console.log(`\n⚠️  TOKEN INTELLIGENCE REQUEST: ${targetToken} on chain ${targetChainId}`);
     console.log("💸 WatchTower will settle the x402 payment automatically if required.");
     console.log("🛡️  Passing transaction through WatchTower Middleware...\n");
 
     try {
-      const safeTx = await watchTower.guardTransaction(targetToken, agentConfig.chainId);
+      const safeTx = await watchTower.guardTransaction(targetToken, targetChainId);
 
       console.log(`\n======================================================`);
       console.log(`✅ WATCHTOWER CLEAR`);
       console.log(`======================================================`);
       console.log(`Threat Score : ${safeTx.threatScore}/100`);
       console.log(`Confidence   : ${(safeTx.confidence * 100).toFixed(0)}%`);
-      console.log(`On-chain Hash: ${safeTx.scanHash.substring(0, 16)}...`);
+      console.log(`Scan Hash    : ${safeTx.scanHash}`);
 
       if (safeTx.modules) {
         console.log("\nIntelligence Breakdown:");
@@ -75,6 +68,7 @@ async function main() {
           console.log(`  ❌ ${cleanReason}`);
         });
 
+        console.log(`\nScan Hash: ${err.scanHash}`);
         console.log(`======================================================`);
         console.log(`💰 Funds protected. The agent avoided a total loss.\n`);
         process.exit(0);

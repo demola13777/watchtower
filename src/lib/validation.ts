@@ -19,13 +19,13 @@ export const chainIdSchema = z
 export const scanRequestSchema = z.object({
   tokenAddress: tokenAddressSchema,
   chainId: chainIdSchema,
-  agentWallet: z.string().trim().min(1).optional(),
+  agentWallet: tokenAddressSchema.optional(),
 });
 
 export const mcpScanInputSchema = {
   tokenAddress: tokenAddressSchema.describe('The token contract address to scan (0x-prefixed, 40 hex chars).'),
   chainId: chainIdSchema.describe('Optional EVM chain id override. If omitted, WatchTower auto-detects the chain.'),
-  agentWallet: z.string().trim().min(1).optional().describe('Your agent wallet address for reputation tracking.'),
+  agentWallet: tokenAddressSchema.optional().describe('Your agent wallet address for reputation tracking.'),
 };
 
 export type ScanRequestInput = z.infer<typeof scanRequestSchema>;

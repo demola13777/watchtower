@@ -1,5 +1,7 @@
 import * as schema from './schema';
 
+export type DatabaseBackend = 'sqlite' | 'turso';
+
 type LocalSqliteDatabase = {
   prepare: (sql: string) => {
     all: () => Array<{ name: string }>;
@@ -21,11 +23,21 @@ type LocalSqliteDatabase = {
 // imports `db` works unchanged regardless of which driver is active.
 // ---------------------------------------------------------------------------
 
+function requiresRemoteDatabase() {
+  return process.env.WATCHTOWER_REQUIRE_TURSO === 'true'
+    || (process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production');
+}
+
+export const databaseBackend: DatabaseBackend = process.env.TURSO_DATABASE_URL ? 'turso' : 'sqlite';
+
 function createDb() {
   const tursoUrl = process.env.TURSO_DATABASE_URL;
   const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
   if (tursoUrl) {
+    if (!tursoToken) {
+      throw new Error('TURSO_AUTH_TOKEN is required when TURSO_DATABASE_URL is configured.');
+    }
     // Production: Turso/LibSQL over HTTP
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createClient } = require('@libsql/client');
@@ -40,6 +52,9 @@ function createDb() {
     console.log('[WatchTower DB] Connected to Turso (production)');
     return drizzle(client, { schema });
   } else {
+    if (requiresRemoteDatabase()) {
+      throw new Error('A production WatchTower deployment requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
+    }
     // Development: Local SQLite file
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Database = require('better-sqlite3');
@@ -110,6 +125,25 @@ function ensureLocalSchema(sqlite: LocalSqliteDatabase) {
   if (!usedPaymentColumns.has('request_hash')) {
     sqlite.prepare('ALTER TABLE used_payment_transactions ADD COLUMN request_hash text').run();
   }
+  if (!usedPaymentColumns.has('payment_id')) {
+    sqlite.prepare('ALTER TABLE used_payment_transactions ADD COLUMN payment_id text').run();
+  }
+
+  const paymentColumns = new Set(sqlite.prepare('PRAGMA table_info(payments)').all().map((column) => column.name));
+  if (!paymentColumns.has('response_payload')) {
+    sqlite.prepare('ALTER TABLE payments ADD COLUMN response_payload text').run();
+  }
+  if (!paymentColumns.has('completed_at')) {
+    sqlite.prepare('ALTER TABLE payments ADD COLUMN completed_at integer').run();
+  }
+
+  sqlite.prepare(`
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      id text PRIMARY KEY,
+      count integer NOT NULL,
+      expires_at integer NOT NULL
+    )
+  `).run();
 }
 
 export const db = createDb();

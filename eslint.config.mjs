@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "token/**",
+    "watchtower/**",
     "packages/watchtower-sdk/src/*.js",
     "packages/watchtower-sdk/src/*.d.ts",
     "packages/watchtower-sdk/src/*.map",
