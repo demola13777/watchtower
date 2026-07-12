@@ -43,7 +43,7 @@ async function testGuardTransactionRequiresPayment() {
     await client.guardTransaction('0xdAC17F958D2ee523a2206206994597C13D831ec7', '1');
     throw new Error('Expected guardTransaction to throw, but it succeeded.');
   } catch (err) {
-    if (err.name === 'WatchTowerPaymentRequiredError') {
+    if (err instanceof WatchTowerPaymentRequiredError) {
       assert(err.requirement, 'PaymentRequiredError should have a requirement object');
       assert(err.requirement.paymentId, 'Requirement should include a paymentId');
       assert(err.requirement.chainId, 'Requirement should include a chainId');
@@ -69,7 +69,7 @@ async function testDeepScanRequiresPayment() {
     await client.deepScan('0xdAC17F958D2ee523a2206206994597C13D831ec7', '1');
     throw new Error('Expected deepScan to throw, but it succeeded.');
   } catch (err) {
-    if (err.name === 'WatchTowerPaymentRequiredError') {
+    if (err instanceof WatchTowerPaymentRequiredError) {
       assert(err.requirement.amount, 'Deep scan requirement should include an amount');
       console.log(`   ✅ Received deep scan payment requirement: ${err.requirement.amount} ${err.requirement.currency}`);
     } else {

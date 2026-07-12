@@ -163,7 +163,7 @@ export default function VerifyPage() {
       <main className="max-w-4xl mx-auto px-4 py-12 sm:py-24 animate-fade-in-up delay-100">
         <div className="text-center mb-12">
           <h1 className="text-4xl sm:text-5xl font-black text-white mb-4 drop-shadow-sm">Manual Verification</h1>
-          <p className="text-slate-400">Enter a Watch Tower Report Hash to verify its cryptographic authenticity.</p>
+          <p className="text-slate-400">Enter a WatchTower registry transaction hash to verify its on-chain attestation.</p>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-700/50 backdrop-blur-md p-6 sm:p-10 rounded-3xl shadow-xl relative overflow-hidden group">

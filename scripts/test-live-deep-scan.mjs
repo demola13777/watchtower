@@ -27,6 +27,7 @@ async function main() {
     agentWallet: AGENT_WALLET,
     paymentPrivateKey: PAYMENT_KEY,
     chainId: 196,
+    paymentRpcUrl: process.env.MAINNET_RPC_URL, // <-- Added to sync RPC nodes perfectly
     paymentPolicy: {
       apiOrigin: API_URL,
       chainId: 196,

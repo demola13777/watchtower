@@ -68,6 +68,7 @@ export async function runFirewallScan(input: {
 }) {
   const chainResolution = input.chainResolution ?? await resolveScanChain(input);
   const chainId = chainResolution.chainId;
+  const agentWallet = input.agentWallet?.toLowerCase() ?? null;
   const report = await analyzeToken(input.tokenAddress, chainId);
 
   const activeModules = report.modules.filter((m) => m.status === 'active').length;
@@ -98,13 +99,13 @@ export async function runFirewallScan(input: {
     recommendation: report.recommendation,
     scanHash: report.scanHash,
     txHash,
-    agentWallet: input.agentWallet ?? null,
+    agentWallet,
     tier: 'firewall',
     timestamp: report.scanTimestamp,
   });
 
-  if (input.agentWallet) {
-    await trackAgentMetrics(input.agentWallet, input.tokenAddress, chainId);
+  if (agentWallet) {
+    await trackAgentMetrics(agentWallet, input.tokenAddress, chainId);
   }
 
   return {
@@ -143,6 +144,7 @@ export async function runDeepScan(input: {
 }): Promise<DeepScanReport> {
   const chainResolution = input.chainResolution ?? await resolveScanChain(input);
   const chainId = chainResolution.chainId;
+  const agentWallet = input.agentWallet?.toLowerCase() ?? null;
   const report = await analyzeToken(input.tokenAddress, chainId);
   const txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
   if (!txHash) {
@@ -191,14 +193,14 @@ export async function runDeepScan(input: {
     recommendation: report.recommendation,
     scanHash: report.scanHash,
     txHash,
-    agentWallet: input.agentWallet ?? null,
+    agentWallet,
     tier: 'deep',
     reportData: JSON.stringify(deepReport),
     timestamp: report.scanTimestamp,
   });
 
-  if (input.agentWallet) {
-    await trackAgentMetrics(input.agentWallet, input.tokenAddress, chainId);
+  if (agentWallet) {
+    await trackAgentMetrics(agentWallet, input.tokenAddress, chainId);
   }
 
   return deepReport;

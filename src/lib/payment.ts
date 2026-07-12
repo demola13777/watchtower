@@ -34,6 +34,7 @@ export interface Web3PaymentRequirement {
   tier: string;
   paymentId: string;
   requestHash?: string;
+  minConfirmations: number;
   instructions: string;
 }
 
@@ -101,6 +102,15 @@ function extractPaymentId(request: Request): string | null {
     : null;
 }
 
+function getPaymentMinConfirmations(): number {
+  const configured = process.env.PAYMENT_MIN_CONFIRMATIONS;
+  if (!configured) return 1;
+  if (!/^\d+$/.test(configured)) {
+    throw new Error('PAYMENT_MIN_CONFIRMATIONS must be a non-negative integer.');
+  }
+  return Number(configured);
+}
+
 export function createPaymentRequestHash(value: unknown): string {
   return crypto
     .createHash('sha256')
@@ -133,7 +143,8 @@ function createRequirement(
     tier,
     paymentId,
     requestHash,
-    instructions: 'Transfer the required token amount to payTo on the configured chain, then retry with Authorization: L402 <transaction_hash> and X-WatchTower-Payment-Id <payment_id>.',
+    minConfirmations: getPaymentMinConfirmations(),
+    instructions: 'Transfer the required token amount to payTo on the configured chain, wait for the required confirmation depth, then retry with Authorization: L402 <transaction_hash> and X-WatchTower-Payment-Id <payment_id>.',
   };
 }
 

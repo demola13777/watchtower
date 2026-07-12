@@ -54,12 +54,15 @@ export function getRateLimitKey(request: Request, agentWallet?: string): string 
 // Agent Metrics Tracking (F6/H6)
 // ---------------------------------------------------------------------------
 export async function trackAgentMetrics(agentWallet: string, tokenAddress: string, chainId: string) {
+  const normalizedAgentWallet = agentWallet.toLowerCase();
+  const normalizedTokenAddress = tokenAddress.toLowerCase();
+
   // Check if the agent previously ignored an ABORT recommendation for this token.
   const previousWarnings = await db.select().from(scans).where(
     and(
-      eq(scans.agentWallet, agentWallet),
+      eq(scans.agentWallet, normalizedAgentWallet),
       eq(scans.chainId, chainId),
-      eq(scans.tokenAddress, tokenAddress),
+      sql`LOWER(${scans.tokenAddress}) = ${normalizedTokenAddress}`,
       eq(scans.recommendation, 'ABORT')
     )
   ).limit(1);
@@ -69,7 +72,7 @@ export async function trackAgentMetrics(agentWallet: string, tokenAddress: strin
   // Atomic upsert — avoids the TOCTOU race where two concurrent requests for
   // the same new wallet both see "not found" and both try to INSERT.
   await db.insert(agents)
-    .values({ wallet: agentWallet, totalScans: 1, recklessTrades: isReckless ? 1 : 0 })
+    .values({ wallet: normalizedAgentWallet, totalScans: 1, recklessTrades: isReckless ? 1 : 0 })
     .onConflictDoUpdate({
       target: agents.wallet,
       set: {

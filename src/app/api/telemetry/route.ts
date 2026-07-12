@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { scans, agents, payments } from '@/lib/db/schema';
+import { scans, payments } from '@/lib/db/schema';
 import { desc, eq, count, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
@@ -8,8 +8,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const requestedLimit = parseInt(searchParams.get('limit') || '10', 10);
+    const parsedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const parsedLimit = Number.parseInt(searchParams.get('limit') || '10', 10);
+    const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const requestedLimit = Number.isFinite(parsedLimit) ? parsedLimit : 10;
     const limitValue = Math.min(Math.max(requestedLimit, 1), 100);
     const offsetValue = (page - 1) * limitValue;
 
@@ -27,19 +29,22 @@ export async function GET(req: Request) {
     
     const totalScansPromise = db.select({ value: count() }).from(scans);
     const threatsBlockedPromise = db.select({ value: count() }).from(scans).where(eq(scans.recommendation, 'ABORT'));
-    const activeAgentsPromise = db.select({ value: count() }).from(agents);
+    const activeAgentsPromise = db.select({
+      value: sql<number>`COUNT(DISTINCT LOWER(${scans.agentWallet}))`,
+    }).from(scans).where(sql`${scans.agentWallet} IS NOT NULL`);
     const settledRevenuePromise = db.select({
       value: sql<number>`COALESCE(SUM(CASE WHEN ${payments.status} IN ('settled', 'processing', 'completed') THEN CAST(${payments.amount} AS REAL) ELSE 0 END), 0)`,
     }).from(payments);
     const leaderboardPromise = db.select({
-      agentWallet: scans.agentWallet,
+      agentWallet: sql<string>`LOWER(${scans.agentWallet})`.as('agent_wallet'),
       totalScans: count().as('total_scans'),
       threatsDetected: sql<number>`SUM(CASE WHEN ${scans.recommendation} = 'ABORT' THEN 1 ELSE 0 END)`.as('threats_detected'),
       cautionsRaised: sql<number>`SUM(CASE WHEN ${scans.recommendation} = 'CAUTION' THEN 1 ELSE 0 END)`.as('cautions_raised'),
       lastActive: sql<number>`MAX(${scans.timestamp})`.as('last_active'),
     })
       .from(scans)
-      .groupBy(scans.agentWallet)
+      .where(sql`${scans.agentWallet} IS NOT NULL`)
+      .groupBy(sql`LOWER(${scans.agentWallet})`)
       .orderBy(sql`total_scans DESC`, sql`last_active DESC`)
       .limit(3);
 

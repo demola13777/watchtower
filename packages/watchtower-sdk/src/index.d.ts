@@ -13,6 +13,7 @@ interface Web3PaymentRequirement {
     tier: string;
     paymentId?: string;
     requestHash?: string;
+    minConfirmations?: number;
     instructions: string;
 }
 export interface WatchTowerPaymentPolicy {

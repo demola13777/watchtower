@@ -50,6 +50,7 @@ interface Web3PaymentRequirement {
   method: string;
   tier: string;
   paymentId?: string;
+  minConfirmations?: number;
   instructions: string;
 }
 
@@ -108,24 +109,44 @@ async function ensureWalletChain(provider: EthereumProvider, requirement: Web3Pa
   }
 }
 
-async function waitForWalletReceipt(provider: EthereumProvider, txHash: string) {
+async function waitForWalletReceipt(
+  provider: EthereumProvider,
+  txHash: string,
+  minConfirmations = 1,
+  onProgress?: (message: string) => void,
+) {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 120_000) {
-    const receipt = await provider.request<{ status?: string } | null>({
+  const requiredConfirmations = Math.max(1, Math.floor(minConfirmations));
+  const timeoutMs = 180_000;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const receipt = await provider.request<{ status?: string; blockNumber?: string } | null>({
       method: 'eth_getTransactionReceipt',
       params: [txHash],
     }).catch(() => null);
 
-    if (receipt?.status === '0x1') return;
     if (receipt?.status === '0x0') {
       throw new Error('Wallet payment transaction failed on-chain.');
     }
+    if (receipt?.status === '0x1' && receipt.blockNumber) {
+      const currentBlockHex = await provider.request<string>({ method: 'eth_blockNumber' }).catch(() => null);
+      if (currentBlockHex) {
+        const minedBlock = BigInt(receipt.blockNumber);
+        const currentBlock = BigInt(currentBlockHex);
+        const confirmations = currentBlock >= minedBlock ? Number(currentBlock - minedBlock + BigInt(1)) : 0;
+        if (confirmations >= requiredConfirmations) return;
+        onProgress?.(`Payment confirmed on-chain. Waiting for ${requiredConfirmations - confirmations} more confirmation(s)...`);
+      }
+    }
     await new Promise((resolve) => setTimeout(resolve, 2500));
   }
-  throw new Error('Wallet payment was submitted, but confirmation timed out. Please try again once the transaction is mined.');
+  throw new Error('Wallet payment was submitted, but confirmation timed out. Please try again once the transaction has enough confirmations.');
 }
 
-async function settlePaymentWithWallet(requirement: Web3PaymentRequirement): Promise<string> {
+async function settlePaymentWithWallet(
+  requirement: Web3PaymentRequirement,
+  onProgress?: (message: string) => void,
+): Promise<string> {
   const provider = window.ethereum;
   if (!provider) {
     throw new Error('No EVM wallet detected. Open this page in a browser with MetaMask, OKX Wallet, or another EVM wallet.');
@@ -177,7 +198,8 @@ async function settlePaymentWithWallet(requirement: Web3PaymentRequirement): Pro
     }],
   });
 
-  await waitForWalletReceipt(provider, txHash);
+  onProgress?.('Payment submitted. Waiting for on-chain confirmation...');
+  await waitForWalletReceipt(provider, txHash, requirement.minConfirmations, onProgress);
   return txHash;
 }
 
@@ -341,7 +363,7 @@ export default function NetworkDashboard() {
         }
         setPaymentRequirement(requirement);
         setScanError(`Confirm ${requirement.amount} ${requirement.currency} in your wallet to unlock this Deep Scan.`);
-        const txHash = await settlePaymentWithWallet(requirement);
+        const txHash = await settlePaymentWithWallet(requirement, setScanError);
         setScanError('Payment confirmed. Finalizing scan...');
         res = await submitDeepScan(txHash, requirement.paymentId);
       }
