@@ -52,7 +52,11 @@ interface ReportModule {
 interface DeepScanReportView {
   generatedAt: string;
   chainId?: string;
-  tokenAddress: string;
+  tokenAddress?: string;
+  target?: {
+    tokenAddress: string;
+    chainId?: string;
+  };
   verdict: {
     threatScore: number;
     confidence: number;
@@ -211,7 +215,7 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
             <div className="font-mono text-sm relative z-10">
               <span className="text-slate-500 block mb-1.5 text-[10px] sm:text-xs tracking-wider">CONTRACT ADDRESS</span>
               <div className="bg-slate-950/80 p-3 rounded-lg text-cyan-400 break-all border border-slate-800 hover:border-cyan-500/50 transition-colors shadow-inner text-xs">
-                {report.tokenAddress}
+                {report.target?.tokenAddress || report.tokenAddress || 'Unknown'}
               </div>
             </div>
           </div>

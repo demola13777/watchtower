@@ -696,12 +696,12 @@ export default function NetworkDashboard() {
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Target Contract</div>
                      {scan.tokenAddress}
                      {scan.tier === 'deep' && (
-                       <Link href={`/report/${scan.scanHash}`} className="text-[10px] text-cyan-500 mt-0.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity hover:text-cyan-400">
+                       <Link href={`/report/${scan.scanHash}`} className="text-[10px] text-cyan-500 mt-0.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:text-cyan-400">
                          <ExternalLink className="h-2.5 w-2.5" /> View Report
                        </Link>
                      )}
                      {scan.tier !== 'deep' && (
-                       <div className="text-[10px] text-slate-600 mt-0.5 break-all opacity-0 group-hover:opacity-100 transition-opacity">Hash: {scan.scanHash.substring(0,32)}...</div>
+                       <div className="text-[10px] text-slate-600 mt-0.5 break-all opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">Hash: {scan.scanHash.substring(0,32)}...</div>
                      )}
                    </div>
                    
