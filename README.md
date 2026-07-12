@@ -6,7 +6,7 @@ An autonomous trading agent finds a newly launched token, sees momentum, and pre
 
 That is the job: give autonomous agents a security decision they can act on before they put capital at risk.
 
-WatchTower is not another token-scanning dashboard. It is **threat-intelligence middleware** for AI agents: an API, MCP server, and TypeScript SDK that turn live onchain and market signals into a machine-readable `TRADE`, `CAUTION`, or `ABORT` recommendation. Deep-scan results are persisted as public reports and cryptographically attested on X Layer.
+WatchTower is not another token-scanning dashboard. It is **threat-intelligence middleware** for AI agents. Through an API, an MCP server, and a TypeScript SDK, it turns live onchain and market signals into a machine-readable `TRADE`, `CAUTION`, or `ABORT` recommendation. Deep-scan results are persisted as public reports and cryptographically attested on X Layer.
 
 > Built for the X Layer Hackathon. WatchTower is engineered for an X Layer Mainnet deployment: network-specific values live in configuration, while the security engine, payment boundary, MCP flow, SDK, and report pipeline remain unchanged across environments.
 
@@ -15,13 +15,13 @@ WatchTower is not another token-scanning dashboard. It is **threat-intelligence 
 | **The problem** | Autonomous agents can execute faster than humans can spot honeypots, illiquidity, concentrated ownership, and hostile token controls. |
 | **The solution** | An agent-callable security layer that scans before execution, bills machine-to-machine, and returns a policy-ready verdict. |
 | **Why X Layer** | Low-cost, high-throughput EVM execution makes attestations practical for frequent security decisions, not just occasional audits. |
-| **Why it is different** | WatchTower is middleware for agents, with MCP and SDK integration, shared threat intelligence, and verifiable onchain receipts. |
+| **Why it is different** | WatchTower is middleware for agents, providing MCP and SDK integration, shared threat intelligence, and verifiable onchain receipts. |
 
 ---
 
 ## Why this matters
 
-The next wave of onchain activity will not be clicked through manually. AI agents will research markets, rebalance portfolios, discover liquidity, and submit transactions at machine speed. That creates a painful asymmetry: malicious token contracts need only one automated mistake, while every agent needs reliable risk context before each decision.
+The next wave of onchain activity will not be clicked through manually. AI agents will research markets, rebalance portfolios, discover liquidity, and submit transactions at machine speed. This creates a painful asymmetry: malicious token contracts need only one automated mistake, while every agent needs reliable risk context before each decision.
 
 Traditional scanners are designed for a human reading a web page after the fact. WatchTower is designed for the moment before execution:
 
@@ -38,12 +38,12 @@ The result is a reusable security primitive for every agent builder, rather than
 
 Security decisions for autonomous agents need to be inexpensive enough to make often and fast enough to matter. X Layer is the deliberate foundation for WatchTower's attestation and payment layer.
 
-X Layer is an EVM-compatible Ethereum Layer 2 built by OKX with Polygon CDK technology. Its scalable execution environment and low transaction-cost profile make it well suited to recording high-frequency security receipts that would be uneconomical on a high-fee base layer. Its EVM compatibility also lets WatchTower use familiar ERC-20 payment and Solidity attestation patterns while remaining accessible to existing agent and wallet tooling. [X Layer announcement](https://medium.com/xlayer-official/introducing-x1-a-new-evm-compatible-layer-2-network-designed-to-build-the-future-of-web3-2d9ec69312a6) [Polygon CDK overview](https://docs.polygon.technology/chain-development/cdk/get-started/overview)
+X Layer is an EVM-compatible Ethereum Layer 2 built by OKX with Polygon CDK technology. Its scalable execution environment and low transaction-cost profile make it well-suited to recording high-frequency security receipts that would be uneconomical on a high-fee base layer. Its EVM compatibility also lets WatchTower use familiar ERC-20 payment and Solidity attestation patterns while remaining accessible to existing agent and wallet tooling. [X Layer announcement](https://medium.com/xlayer-official/introducing-x1-a-new-evm-compatible-layer-2-network-designed-to-build-the-future-of-web3-2d9ec69312a6) | [Polygon CDK overview](https://docs.polygon.technology/chain-development/cdk/get-started/overview)
 
 For WatchTower, that translates into four practical advantages:
 
 - **Fast confirmation path and cost-effective attestations.** X Layer's low-latency execution environment makes a security receipt practical at the point of an agent decision, without turning the receipt itself into the product's largest cost.
-- **EVM-native payments.** Agents settle configured ERC-20 payments and WatchTower verifies the exact token, recipient, amount, chain, and transaction status.
+- **EVM-native payments.** Agents settle configured ERC-20 payments, and WatchTower verifies the exact token, recipient, amount, chain, and transaction status.
 - **A scalable path for machine activity.** The architecture is suited to frequent agent-to-agent requests, rather than a handful of manual approvals.
 - **Polygon CDK ecosystem alignment.** WatchTower is built around the same EVM and scalable-chain direction that supports interoperable, ZK-powered L2 infrastructure.
 
@@ -81,7 +81,7 @@ WatchTower currently combines four modules:
 | **Liquidity Intelligence** | DexScreener | Liquidity depth, missing pairs, pair age, volume, and inactive markets. |
 | **Contract DNA Scanner** | GoPlus Security | Honeypot behavior, sell restrictions, mintability, ownership controls, and token taxes. |
 | **Whale Intelligence** | Ethplorer | Holder concentration and largest-holder exposure. |
-| **Social Threat Radar** | DexScreener-backed activity signals | Market activity, transaction skew, volatility, and bot-like indicators. LunarCrush is an integration-ready future provider, not an active source today. |
+| **Social Threat Radar** | DexScreener-backed activity signals | Market activity, transaction skew, volatility, and bot-like indicators. |
 
 Only genuine, provider-backed results affect the threat score. If a module is unavailable, rate-limited, or cannot verify a result, WatchTower marks it unavailable, excludes its weight from the score, redistributes the remaining weights, and lowers confidence. It never invents, estimates, or simulates risk data to fill a gap.
 
@@ -148,7 +148,7 @@ When an approved server returns a payment challenge, the SDK validates its pinne
 
 ## Machine-to-machine payment flow
 
-WatchTower implements a production-shaped, self-hosted x402-style payment boundary for X Layer. It does not claim to be a hosted facilitator. Instead, it verifies the actual ERC-20 transfer against the configured RPC and keeps the verification and settlement boundary isolated behind `PaymentService` so a standards-compliant facilitator or local verifier can replace it later without touching the scan engine.
+WatchTower implements a production-shaped, self-hosted x402-style payment boundary for X Layer. It does not claim to be a hosted facilitator. Instead, it verifies the actual ERC-20 transfer against the configured RPC and keeps the verification and settlement boundary isolated behind `PaymentService`. This ensures a standards-compliant facilitator or local verifier can replace it later without touching the scan engine.
 
 ```mermaid
 sequenceDiagram
@@ -180,7 +180,7 @@ Before a protected request proceeds, the verifier checks:
 - the transaction has the configured confirmation depth; and
 - the transaction hash has not already unlocked another request.
 
-Payment intents bind a 402 challenge to its endpoint, tier, and request body. Atomic intent claims and a used-transaction registry prevent replay and concurrent double-spend attempts. Failed deep-scan attestation does not masquerade as success: the intent remains retryable rather than returning a falsely anchored report.
+Payment intents bind a 402 challenge to its endpoint, tier, and request body. Atomic intent claims and a used-transaction registry prevent replay and concurrent double-spend attempts. A failed deep-scan attestation does not masquerade as success: the intent remains retryable rather than returning a falsely anchored report.
 
 ### Current pricing
 
@@ -210,9 +210,19 @@ This is a conscious V1 trade-off, not a hidden claim of full decentralization:
 
 The attestation proves that the configured WatchTower registry recorded a particular scan hash at a given time. It does **not** prove that every offchain provider response was independently recomputed by a decentralized network. Consumers should treat a verdict as threat intelligence and retain their own execution limits, wallet permissions, and risk policy.
 
-### Decentralization roadmap
+---
 
-The next protocol stages are planned work, not features claimed by this repository:
+## Roadmap & Future Work
+
+### The Enforcer Vault (Cryptographic Co-signer)
+
+While WatchTower currently operates as an intelligence and attestation layer, the next architectural evolution is active onchain enforcement. 
+
+Future versions will introduce the **WatchTower Enforcer Vault**—a smart contract wallet for autonomous agents that requires a cryptographic co-signature from the WatchTower protocol to execute transactions. Instead of relying solely on the agent's internal policy to abort a trade, the Vault strictly enforces security at the consensus level. High-risk transactions are cryptographically blocked from executing unless they satisfy predefined, onchain security policies.
+
+### Decentralization Roadmap
+
+The next protocol stages are planned work focused on progressively decentralizing the threat engine:
 
 1. **Distributed validator nodes** that independently fetch and score the same evidence.
 2. **Decentralized security workers** with staking, reputation, and challenge mechanisms.
@@ -278,7 +288,7 @@ The Command Center is a visual demonstration of the agent flow. It can connect t
 
 - Node.js 20+
 - npm
-- Foundry, only for smart-contract development and tests
+- Foundry (only for smart-contract development and tests)
 - Access to an X Layer Mainnet RPC, the configured ERC-20 payment token, and native OKB for payment and attestation operations
 
 ### Install and run
@@ -325,7 +335,7 @@ That wallet needs the configured payment token and enough native X Layer gas tok
 
 ### Mainnet launch configuration
 
-The business logic has no mainnet-specific branch. A live deployment requires an explicit X Layer Mainnet RPC, verified payment-token contract, treasury, registry address, production database, confirmation policy, and registry signer. Before enabling paid traffic, complete [the mainnet readiness checklist](./docs/MAINNET_READINESS.md) and run end-to-end validation with real funds.
+The business logic has no mainnet-specific branch. A live deployment requires an explicit X Layer Mainnet RPC, a verified payment-token contract, treasury, registry address, production database, confirmation policy, and registry signer. Before enabling paid traffic, complete [the mainnet readiness checklist](./docs/MAINNET_READINESS.md) and run end-to-end validation with real funds.
 
 ---
 
