@@ -283,6 +283,34 @@ interface ScanResult {
   };
 }
 
+interface DeepScanApiResult {
+  target?: {
+    tokenAddress?: string;
+    chainId?: string;
+    chainResolution?: ScanResult['chainResolution'];
+  };
+  verdict?: ScanResult['verdict'];
+  verification?: ScanResult['verification'];
+}
+
+function normalizeScanResult(value: unknown): ScanResult | null {
+  const result = value as DeepScanApiResult;
+  if (!result?.target?.tokenAddress || !result.target.chainId || !result.target.chainResolution || !result.verdict || !result.verification?.scanHash) {
+    return null;
+  }
+
+  return {
+    tokenAddress: result.target.tokenAddress,
+    chainId: result.target.chainId,
+    chainResolution: result.target.chainResolution,
+    verdict: result.verdict,
+    verification: {
+      scanHash: result.verification.scanHash,
+      txHash: result.verification.txHash ?? null,
+    },
+  };
+}
+
 export default function NetworkDashboard() {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -379,7 +407,7 @@ export default function NetworkDashboard() {
       };
 
       let res = await submitDeepScan();
-      let data: { success?: boolean; message?: string; error?: string; data?: ScanResult } | null = null;
+      let data: { success?: boolean; message?: string; error?: string; data?: unknown } | null = null;
 
       if (res.status === 402) {
         const encodedRequirement = res.headers.get('PAYMENT-REQUIRED');
@@ -402,8 +430,9 @@ export default function NetworkDashboard() {
       clearInterval(moduleTimer);
       setActiveModule(4); // All complete
 
-      if (data?.success && data.data) {
-        setScanResult(data.data);
+      const normalizedResult = data?.success ? normalizeScanResult(data.data) : null;
+      if (normalizedResult) {
+        setScanResult(normalizedResult);
         setScanError('');
         fetchTelemetry(); // Refresh stats
       } else {
