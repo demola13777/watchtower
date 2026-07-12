@@ -30,36 +30,37 @@ export interface WatchTowerPaymentPolicy {
 }
 export interface ScanResponse {
     success: boolean;
-    data?: {
-        tokenAddress: string;
-        chainId: string;
-        chainResolution: {
-            chainId: string;
-            chainName: string;
-            confidence: string;
-            source: string;
-            reason: string;
-            candidates: Array<{
-                chainId: string;
-                name: string;
-                confidenceScore: number;
-                signals: string[];
-            }>;
-        };
-        threatScore: number;
-        confidence: number;
-        recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
-        reasoning: string[];
-        modules: Array<{
-            name: string;
-            score: number;
-            maxScore: number;
-            signals: string[];
-            status: 'active' | 'unavailable' | 'coming_soon';
-        }>;
-        scanHash: string;
-    };
+    data?: GuardScanData;
     error?: string;
+}
+export interface GuardScanData {
+    tokenAddress: string;
+    chainId: string;
+    chainResolution: {
+        chainId: string;
+        chainName: string;
+        confidence: string;
+        source: string;
+        reason: string;
+        candidates: Array<{
+            chainId: string;
+            name: string;
+            confidenceScore: number;
+            signals: string[];
+        }>;
+    };
+    threatScore: number;
+    confidence: number;
+    recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
+    reasoning: string[];
+    modules: Array<{
+        name: string;
+        score: number;
+        maxScore: number;
+        signals: string[];
+        status: 'active' | 'unavailable' | 'coming_soon';
+    }>;
+    scanHash: string;
 }
 export interface WatchTowerConfig {
     /** WatchTower API base URL */
@@ -123,6 +124,7 @@ export declare class WatchTowerClient {
     private normalizeOptions;
     private createHeaders;
     private readPaymentRequirement;
+    private retryPaidRequest;
     private getPaymentRpcUrl;
     private settlePayment;
 }

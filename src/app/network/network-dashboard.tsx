@@ -76,6 +76,10 @@ function decodeBase64Json<T>(value: string): T | null {
   }
 }
 
+function isConfirmationDepthError(message?: string): boolean {
+  return Boolean(message?.match(/confirmation\(s\).+required/i));
+}
+
 function getChainMetadata(requirement: Web3PaymentRequirement) {
   const isTestnet = requirement.chainId === 1952;
   return {
@@ -338,7 +342,11 @@ export default function NetworkDashboard() {
     }, 1200);
 
     try {
-      const payload = JSON.stringify({ tokenAddress: addressValidation.address, agentWallet: '0x000000000000000000000000000000000000dA5b' });
+      const payload = JSON.stringify({
+        tokenAddress: addressValidation.address,
+        chainId: '196',
+        agentWallet: '0x000000000000000000000000000000000000dA5b',
+      });
 
       const submitDeepScan = (paymentTxHash?: string, paymentId?: string) => fetch('/api/scan/deep', {
         method: 'POST',
@@ -350,7 +358,28 @@ export default function NetworkDashboard() {
         body: payload,
       });
 
+      const retryPaidDeepScan = async (paymentTxHash: string, paymentId: string) => {
+        const startedAt = Date.now();
+        const timeoutMs = 180_000;
+
+        while (Date.now() - startedAt < timeoutMs) {
+          const paidResponse = await submitDeepScan(paymentTxHash, paymentId);
+          const paidData = await paidResponse.json().catch(() => null) as { success?: boolean; message?: string; error?: string; data?: unknown } | null;
+          const message = paidData?.message || paidData?.error;
+
+          if (paidResponse.status !== 401 || !isConfirmationDepthError(message)) {
+            return { response: paidResponse, data: paidData };
+          }
+
+          setScanError(`${message} Waiting for the verification RPC to catch up...`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+
+        throw new Error('Payment is confirmed, but server-side confirmation verification timed out. Retry the same scan shortly; the payment id remains bound to this request.');
+      };
+
       let res = await submitDeepScan();
+      let data: { success?: boolean; message?: string; error?: string; data?: ScanResult } | null = null;
 
       if (res.status === 402) {
         const encodedRequirement = res.headers.get('PAYMENT-REQUIRED');
@@ -365,18 +394,20 @@ export default function NetworkDashboard() {
         setScanError(`Confirm ${requirement.amount} ${requirement.currency} in your wallet to unlock this Deep Scan.`);
         const txHash = await settlePaymentWithWallet(requirement, setScanError);
         setScanError('Payment confirmed. Finalizing scan...');
-        res = await submitDeepScan(txHash, requirement.paymentId);
+        const paidResult = await retryPaidDeepScan(txHash, requirement.paymentId);
+        res = paidResult.response;
+        data = paidResult.data as typeof data;
       }
-      const data = await res.json();
+      data ??= await res.json();
       clearInterval(moduleTimer);
       setActiveModule(4); // All complete
 
-      if (data.success) {
+      if (data?.success && data.data) {
         setScanResult(data.data);
         setScanError('');
         fetchTelemetry(); // Refresh stats
       } else {
-        setScanError(data.message || data.error || 'Scan failed');
+        setScanError(data?.message || data?.error || 'Scan failed');
       }
     } catch (error) {
       clearInterval(moduleTimer);

@@ -711,7 +711,7 @@ export async function submitScanProof(
   }
 
   try {
-    const { createPublicClient, createWalletClient, http } = await import('viem');
+    const { createPublicClient, createWalletClient, decodeEventLog, encodePacked, http, keccak256, parseAbiItem } = await import('viem');
     const { privateKeyToAccount } = await import('viem/accounts');
     const { defineChain } = await import('viem');
     
@@ -759,6 +759,23 @@ export async function submitScanProof(
         "stateMutability": "nonpayable"
       }
     ] as const;
+    const scanRecordedEvent = parseAbiItem(
+      'event ScanRecorded(uint256 indexed chainId, address indexed tokenAddress, string scanHash, uint256 threatScore, uint256 timestamp)',
+    );
+    const readAbi = [
+      {
+        type: 'function',
+        name: 'latestScans',
+        inputs: [{ name: '', type: 'bytes32' }],
+        outputs: [
+          { name: 'chainId', type: 'uint256' },
+          { name: 'scanHash', type: 'string' },
+          { name: 'threatScore', type: 'uint256' },
+          { name: 'timestamp', type: 'uint256' },
+        ],
+        stateMutability: 'view',
+      },
+    ] as const;
 
     // F3: Abort if address is invalid instead of sending zero-address
     if (!isValidEthAddress(tokenAddress)) {
@@ -770,16 +787,68 @@ export async function submitScanProof(
       console.warn(`[WatchTower] Scan chain ${chainId} differs from registry chain ${REGISTRY_CHAIN_ID}; recording attestation on configured registry chain`);
     }
 
+    const args = [BigInt(chainId), tokenAddress as `0x${string}`, scanHash, BigInt(threatScore)] as const;
+    const estimatedGas = await publicClient.estimateContractGas({
+      account,
+      address: REGISTRY_ADDRESS as `0x${string}`,
+      abi,
+      functionName: 'recordScan',
+      args,
+    });
+    const gas = (estimatedGas * BigInt(130)) / BigInt(100);
+
     const txHash = await client.writeContract({
       address: REGISTRY_ADDRESS as `0x${string}`,
       abi,
       functionName: 'recordScan',
-      args: [BigInt(chainId), tokenAddress as `0x${string}`, scanHash, BigInt(threatScore)]
+      args,
+      gas,
     });
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     if (receipt.status !== 'success') {
       throw new Error(`Registry transaction ${txHash} reverted.`);
+    }
+
+    const emittedExpectedEvent = receipt.logs.some((log) => {
+      if (log.address.toLowerCase() !== REGISTRY_ADDRESS.toLowerCase()) return false;
+      try {
+        const decoded = decodeEventLog({
+          abi: [scanRecordedEvent],
+          data: log.data,
+          topics: log.topics,
+        });
+        const eventArgs = decoded.args as {
+          chainId?: bigint;
+          tokenAddress?: `0x${string}`;
+          scanHash?: string;
+          threatScore?: bigint;
+        };
+        return eventArgs.chainId === BigInt(chainId)
+          && eventArgs.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase()
+          && eventArgs.scanHash === scanHash
+          && eventArgs.threatScore === BigInt(threatScore);
+      } catch {
+        return false;
+      }
+    });
+
+    const scanKey = keccak256(encodePacked(['uint256', 'address'], [BigInt(chainId), tokenAddress as `0x${string}`]));
+    const latest = await publicClient.readContract({
+      address: REGISTRY_ADDRESS as `0x${string}`,
+      abi: readAbi,
+      functionName: 'latestScans',
+      args: [scanKey],
+    }).catch(() => null);
+    const storedExpectedScan = Boolean(
+      latest
+      && latest[0] === BigInt(chainId)
+      && latest[1] === scanHash
+      && latest[2] === BigInt(threatScore),
+    );
+
+    if (!emittedExpectedEvent || !storedExpectedScan) {
+      throw new Error(`Registry transaction ${txHash} did not produce a verifiable WatchTower attestation.`);
     }
 
     console.log(`[WatchTower] On-chain proof confirmed. TxHash: ${txHash}`);

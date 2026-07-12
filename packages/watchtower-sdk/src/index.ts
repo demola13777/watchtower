@@ -20,6 +20,10 @@ interface Web3PaymentRequirement {
   instructions: string;
 }
 
+function isConfirmationDepthError(message?: string): boolean {
+  return Boolean(message?.match(/confirmation\(s\).+required/i));
+}
+
 export interface WatchTowerPaymentPolicy {
   /** Exact API origin that is allowed to request automatic settlement. */
   apiOrigin: string;
@@ -43,36 +47,85 @@ function decodeBase64Json<T>(value: string): T | null {
 
 export interface ScanResponse {
   success: boolean;
-  data?: {
-    tokenAddress: string;
-    chainId: string;
-    chainResolution: {
-      chainId: string;
-      chainName: string;
-      confidence: string;
-      source: string;
-      reason: string;
-      candidates: Array<{
-        chainId: string;
-        name: string;
-        confidenceScore: number;
-        signals: string[];
-      }>;
-    };
-    threatScore: number;
-    confidence: number;
-    recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
-    reasoning: string[];
-    modules: Array<{
-      name: string;
-      score: number;
-      maxScore: number;
-      signals: string[];
-      status: 'active' | 'unavailable' | 'coming_soon';
-    }>;
-    scanHash: string;
-  };
+  data?: GuardScanData;
   error?: string;
+}
+
+export interface GuardScanData {
+  tokenAddress: string;
+  chainId: string;
+  chainResolution: {
+    chainId: string;
+    chainName: string;
+    confidence: string;
+    source: string;
+    reason: string;
+    candidates: Array<{
+      chainId: string;
+      name: string;
+      confidenceScore: number;
+      signals: string[];
+    }>;
+  };
+  threatScore: number;
+  confidence: number;
+  recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
+  reasoning: string[];
+  modules: Array<{
+    name: string;
+    score: number;
+    maxScore: number;
+    signals: string[];
+    status: 'active' | 'unavailable' | 'coming_soon';
+  }>;
+  scanHash: string;
+}
+
+type RawScanData = Partial<GuardScanData> & {
+  target?: {
+    tokenAddress?: string;
+    chainId?: string;
+    chainResolution?: GuardScanData['chainResolution'];
+  };
+  verdict?: {
+    threatScore?: number;
+    confidence?: number;
+    recommendation?: GuardScanData['recommendation'];
+  };
+  intelligenceModules?: GuardScanData['modules'];
+  verification?: {
+    scanHash?: string;
+  };
+};
+
+function normalizeScanData(data: RawScanData): GuardScanData {
+  const normalized = {
+    tokenAddress: data.tokenAddress ?? data.target?.tokenAddress,
+    chainId: data.chainId ?? data.target?.chainId,
+    chainResolution: data.chainResolution ?? data.target?.chainResolution,
+    threatScore: data.threatScore ?? data.verdict?.threatScore,
+    confidence: data.confidence ?? data.verdict?.confidence,
+    recommendation: data.recommendation ?? data.verdict?.recommendation,
+    reasoning: data.reasoning,
+    modules: data.modules ?? data.intelligenceModules,
+    scanHash: data.scanHash ?? data.verification?.scanHash,
+  };
+
+  if (
+    !normalized.tokenAddress
+    || !normalized.chainId
+    || !normalized.chainResolution
+    || normalized.threatScore === undefined
+    || normalized.confidence === undefined
+    || !normalized.recommendation
+    || !normalized.reasoning
+    || !normalized.modules
+    || !normalized.scanHash
+  ) {
+    throw new Error('WatchTower API returned an incomplete scan response.');
+  }
+
+  return normalized as GuardScanData;
 }
 
 export interface WatchTowerConfig {
@@ -191,39 +244,36 @@ export class WatchTowerClient {
     if (res.status === 402) {
       const requirement = await this.readPaymentRequirement(res);
       const txHash = await this.settlePayment(requirement);
-      res = await fetch(`${this.apiUrl}/api/scan`, {
-        method: 'POST',
-        headers: this.createHeaders(txHash, requirement.paymentId),
-        body: JSON.stringify(payload),
-      });
+      res = await this.retryPaidRequest('/api/scan', payload, txHash, requirement.paymentId);
     }
 
     if (!res.ok) {
       throw new Error(`WatchTower API error: ${res.statusText}`);
     }
 
-    const { data, success, error } = (await res.json()) as ScanResponse;
+    const { data, success, error } = (await res.json()) as { success: boolean; data?: RawScanData; error?: string };
 
     if (!success || !data) {
       throw new Error(error || 'Failed to scan token');
     }
+    const normalizedData = normalizeScanData(data);
 
     // A settlement hash authorizes exactly one request. Never carry it into a
     // later scan made by the same long-lived client instance.
     this.paymentTxHash = undefined;
 
     // Configurable Kill Switch — use client-side threshold, not just server recommendation
-    if (data.threatScore > this.threshold) {
+    if (normalizedData.threatScore > this.threshold) {
       throw new WatchTowerAbortError(
-        `WatchTower blocked execution on ${targetTokenAddress} (score ${data.threatScore} > threshold ${this.threshold}). Reasons: ${data.reasoning.join(', ')}`,
-        data.threatScore,
-        data.confidence,
-        data.reasoning,
-        data.scanHash,
+        `WatchTower blocked execution on ${targetTokenAddress} (score ${normalizedData.threatScore} > threshold ${this.threshold}). Reasons: ${normalizedData.reasoning.join(', ')}`,
+        normalizedData.threatScore,
+        normalizedData.confidence,
+        normalizedData.reasoning,
+        normalizedData.scanHash,
       );
     }
 
-    return data;
+    return normalizedData;
   }
 
   /**
@@ -257,11 +307,7 @@ export class WatchTowerClient {
     if (res.status === 402) {
       const requirement = await this.readPaymentRequirement(res);
       const txHash = await this.settlePayment(requirement);
-      res = await fetch(`${this.apiUrl}/api/scan/deep`, {
-        method: 'POST',
-        headers: this.createHeaders(txHash, requirement.paymentId),
-        body: JSON.stringify(payload),
-      });
+      res = await this.retryPaidRequest('/api/scan/deep', payload, txHash, requirement.paymentId);
     }
 
     if (!res.ok) {
@@ -318,6 +364,35 @@ export class WatchTowerClient {
     const body = await res.json().catch(() => null) as { paymentRequired?: Web3PaymentRequirement } | null;
     if (body?.paymentRequired) return body.paymentRequired;
     throw new Error('WatchTower payment challenge did not include a PAYMENT-REQUIRED requirement.');
+  }
+
+  private async retryPaidRequest(
+    path: '/api/scan' | '/api/scan/deep',
+    payload: unknown,
+    paymentTxHash: string,
+    paymentId?: string,
+  ): Promise<Response> {
+    const startedAt = Date.now();
+    const timeoutMs = 180_000;
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const response = await fetch(`${this.apiUrl}${path}`, {
+        method: 'POST',
+        headers: this.createHeaders(paymentTxHash, paymentId),
+        body: JSON.stringify(payload),
+      });
+
+      if (response.status !== 401) return response;
+
+      const body = await response.clone().json().catch(() => null) as { message?: string; error?: string } | null;
+      if (!isConfirmationDepthError(body?.message || body?.error)) {
+        return response;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    throw new Error('Payment is confirmed, but server-side confirmation verification timed out. Retry the same request shortly with the same payment id and transaction hash.');
   }
 
   private getPaymentRpcUrl(requirement: Web3PaymentRequirement): string {
