@@ -438,6 +438,16 @@ export class WatchTowerClient {
     if (receipt.status !== 'success') {
       throw new Error('Payment transaction reverted on-chain.');
     }
+
+    // Wait for sufficient confirmations before retrying.
+    // The server requires PAYMENT_MIN_CONFIRMATIONS (typically 2).
+    const requiredConfirmations = 2;
+    let currentBlock = await publicClient.getBlockNumber();
+    while (currentBlock - receipt.blockNumber + 1n < BigInt(requiredConfirmations)) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      currentBlock = await publicClient.getBlockNumber();
+    }
+
     return txHash;
   }
 }

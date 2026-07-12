@@ -6,14 +6,18 @@ import { REGISTRY_ADDRESS, REGISTRY_CHAIN_ID, SCAN_PRICING_USDT } from '@/lib/co
 import { trackAgentMetrics } from '@/lib/api-utils';
 import { logger } from '@/lib/logger';
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://watchtowr.xyz').replace(/\/$/, '');
+
 export interface DeepScanReport {
   reportType: 'DEEP_SCAN';
   tier: string;
   price: string;
   generatedAt: string;
-  chainId: string;
-  chainResolution: ChainResolution;
-  tokenAddress: string;
+  target: {
+    tokenAddress: string;
+    chainId: string;
+    chainResolution: ChainResolution;
+  };
   verdict: {
     threatScore: number;
     confidence: number;
@@ -30,8 +34,12 @@ export interface DeepScanReport {
     status: string;
   };
   recommendations: string[];
+  meta: {
+    engine: string;
+    network: string;
+    reportUrl: string;
+  };
 }
-
 export class ChainResolutionError extends Error {
   constructor(message: string) {
     super(message);
@@ -100,16 +108,30 @@ export async function runFirewallScan(input: {
   }
 
   return {
-    tokenAddress: input.tokenAddress,
-    chainId,
-    chainResolution,
-    threatScore: report.threatScore,
-    confidence: report.confidence,
-    recommendation: report.recommendation,
+    reportType: 'FIREWALL_SCAN' as const,
+    tier: 'Tier 2 — API Firewall',
+    generatedAt: new Date().toISOString(),
+    target: {
+      tokenAddress: input.tokenAddress,
+      chainId,
+      chainResolution,
+    },
+    verdict: {
+      threatScore: report.threatScore,
+      confidence: report.confidence,
+      recommendation: report.recommendation,
+    },
+    intelligenceModules: report.modules,
     reasoning: report.reasoning,
-    modules: report.modules,
-    scanHash: report.scanHash,
-    txHash: txHash || undefined,
+    verification: {
+      scanHash: report.scanHash,
+      ...(txHash ? { txHash } : {}),
+    },
+    meta: {
+      engine: 'WatchTower v1',
+      network: 'X Layer Mainnet',
+      reportUrl: `${SITE_URL}/report/${report.scanHash}`,
+    },
   };
 }
 
@@ -131,12 +153,14 @@ export async function runDeepScan(input: {
 
   const deepReport: DeepScanReport = {
     reportType: 'DEEP_SCAN',
-    tier: 'Tier 1 - Comprehensive Report',
+    tier: 'Tier 1 — Comprehensive Intelligence Report',
     price: `${SCAN_PRICING_USDT.deep} USDT`,
     generatedAt: new Date().toISOString(),
-    chainId,
-    chainResolution,
-    tokenAddress: input.tokenAddress,
+    target: {
+      tokenAddress: input.tokenAddress,
+      chainId,
+      chainResolution,
+    },
     verdict: {
       threatScore: report.threatScore,
       confidence: report.confidence,
@@ -150,9 +174,14 @@ export async function runDeepScan(input: {
       txHash,
       registryContract: REGISTRY_ADDRESS,
       chain: `Registry chain ${REGISTRY_CHAIN_ID}; scan chain ${chainId}`,
-      status: 'On-chain attestation recorded successfully',
+      status: 'On-chain attestation confirmed',
     },
     recommendations: generateRecommendations(report.recommendation, report.modules),
+    meta: {
+      engine: 'WatchTower v1',
+      network: 'X Layer Mainnet',
+      reportUrl: `${SITE_URL}/report/${report.scanHash}`,
+    },
   };
 
   await db.insert(scans).values({
@@ -182,12 +211,12 @@ function generateSummary(
 ): string {
   const confText = confidence >= 0.8 ? 'high' : confidence >= 0.5 ? 'moderate' : 'limited';
   if (recommendation === 'ABORT') {
-    return `This token presents critical security risks (score: ${score}/100) with ${confText} confidence. Interaction is strongly discouraged.`;
+    return `Critical threat detected — threat score ${score}/100 at ${confText} confidence. WatchTower strongly advises against any interaction with this contract.`;
   }
   if (recommendation === 'CAUTION') {
-    return `This token has elevated risk indicators (score: ${score}/100) with ${confText} confidence. Proceed with reduced position sizing and active monitoring.`;
+    return `Elevated risk indicators identified — threat score ${score}/100 at ${confText} confidence. Proceed only with reduced exposure and active monitoring.`;
   }
-  return `This token passed security checks with a low threat score (${score}/100) at ${confText} confidence. Standard risk management practices still apply.`;
+  return `Security checks passed — threat score ${score}/100 at ${confText} confidence. No critical risks detected. Standard risk management applies.`;
 }
 
 function generateRecommendations(
@@ -196,21 +225,21 @@ function generateRecommendations(
 ): string[] {
   const recs: string[] = [];
   if (recommendation === 'ABORT') {
-    recs.push('Do not interact with this contract');
-    recs.push('If you hold tokens, attempt to sell immediately');
-    recs.push('Report this contract to the community');
+    recs.push('Immediately cease all interaction with this contract.');
+    recs.push('If holding tokens, attempt to exit positions without delay.');
+    recs.push('Flag this contract address in your agent\'s blocklist.');
   } else if (recommendation === 'CAUTION') {
-    recs.push('Limit position size to < 1% of portfolio');
-    recs.push('Set strict stop-losses');
-    recs.push('Monitor for liquidity changes');
+    recs.push('Restrict position size to < 1% of total portfolio value.');
+    recs.push('Deploy strict stop-loss parameters before entry.');
+    recs.push('Monitor on-chain liquidity movements for sudden changes.');
   } else {
-    recs.push('Standard position sizing applies');
-    recs.push('Re-scan periodically as conditions change');
+    recs.push('Standard position sizing and risk parameters apply.');
+    recs.push('Schedule periodic re-scans as market conditions evolve.');
   }
 
   const unavailable = modules.filter((module) => module.status === 'unavailable');
   if (unavailable.length > 0) {
-    recs.push(`Note: ${unavailable.length} intelligence module(s) returned degraded data. Confidence will improve when live data sources are available.`);
+    recs.push(`${unavailable.length} intelligence module(s) returned degraded data — confidence may improve once all data sources are fully available.`);
   }
   return recs;
 }

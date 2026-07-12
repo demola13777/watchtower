@@ -139,12 +139,12 @@ export default function Home() {
 <span className="text-purple-400">import</span> {'{ WatchTowerClient }'} <span className="text-purple-400">from</span> <span className="text-emerald-400">&apos;okx-watchtower-middleware&apos;</span>;{'\n\n'}
 <span className="text-slate-500">{"// Pin automatic settlement to your X Layer Mainnet policy"}</span>{'\n'}
 <span className="text-purple-400">const</span> wt = <span className="text-purple-400">new</span> WatchTowerClient({'{'}{'\n'}
-{'  '}apiUrl: <span className="text-emerald-400">&apos;https://watchtower.xyz&apos;</span>,{'\n'}
+{'  '}apiUrl: <span className="text-emerald-400">&apos;https://watchtowr.xyz&apos;</span>,{'\n'}
 {'  '}agentWallet: <span className="text-emerald-400">&apos;0xYourAgent...&apos;</span>,{'\n'}
 {'  '}chainId: <span className="text-purple-400">196</span>,{'\n'}
 {'  '}paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,{'\n'}
 {'  '}paymentPolicy: {'{'}{'\n'}
-{'    '}apiOrigin: <span className="text-emerald-400">&apos;https://watchtower.xyz&apos;</span>,{'\n'}
+{'    '}apiOrigin: <span className="text-emerald-400">&apos;https://watchtowr.xyz&apos;</span>,{'\n'}
 {'    '}chainId: <span className="text-purple-400">196</span>,{'\n'}
 {'    '}tokenAddress: process.env.MAINNET_USDT_ADDRESS,{'\n'}
 {'    '}treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS,{'\n'}

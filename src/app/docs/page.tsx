@@ -156,13 +156,13 @@ npm run dev`}</CodeBlock>
             <CodeBlock language="ts">{`import { WatchTowerClient, WatchTowerAbortError } from "okx-watchtower-middleware";
 
 const wt = new WatchTowerClient({
-  apiUrl: "https://your-watchtower-domain",
+  apiUrl: "https://watchtowr.xyz",
   agentWallet: "0xYourAgentWallet",
   chainId: 196,
   threshold: 70,
   paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,
   paymentPolicy: {
-    apiOrigin: "https://your-watchtower-domain",
+    apiOrigin: "https://watchtowr.xyz",
     chainId: 196,
     tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
     treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS!,
@@ -190,7 +190,7 @@ try {
             <CodeBlock language="json">{`{
   "mcpServers": {
     "watchtower": {
-      "url": "http://localhost:3000/api/mcp"
+      "url": "https://watchtowr.xyz/api/mcp"
     }
   }
 }`}</CodeBlock>
@@ -240,7 +240,7 @@ POST /api/scan/deep  // Tier 1, 1 USDT
             <p>
               Local development may use SQLite. A mainnet deployment uses Turso/libSQL, a dedicated X Layer RPC, an explicit registry address, and production secret management.
             </p>
-            <CodeBlock language="bash">{`NEXT_PUBLIC_SITE_URL=https://watchtower.xyz
+            <CodeBlock language="bash">{`NEXT_PUBLIC_SITE_URL=https://watchtowr.xyz
 TURSO_DATABASE_URL=libsql://...
 TURSO_AUTH_TOKEN=...
 NEXT_PUBLIC_REGISTRY_ADDRESS=0x...

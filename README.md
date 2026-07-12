@@ -239,12 +239,12 @@ The present boundaries are deliberately shaped for that evolution: payment verif
 Example scan request:
 
 ```bash
-curl -X POST http://localhost:3000/api/scan \
+curl -X POST https://watchtowr.xyz/api/scan \
   -H "Content-Type: application/json" \
   -d '{
     "tokenAddress": "0xYourTokenAddress",
     "agentWallet": "0xYourAgentWallet",
-    "chainId": "1952"
+    "chainId": "196"
   }'
 ```
 
@@ -293,7 +293,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000` for the Command Center, `http://localhost:3000/docs` for in-app developer material, and `http://localhost:3000/verify` to inspect an attestation.
+Open `https://watchtowr.xyz` for the Command Center, `https://watchtowr.xyz/docs` for in-app developer material, and `https://watchtowr.xyz/verify` to inspect an attestation.
 
 ### Configure X Layer Mainnet
 
