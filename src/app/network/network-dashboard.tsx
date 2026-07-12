@@ -372,7 +372,6 @@ export default function NetworkDashboard() {
     try {
       const payload = JSON.stringify({
         tokenAddress: addressValidation.address,
-        chainId: '196',
         agentWallet: '0x000000000000000000000000000000000000dA5b',
       });
 

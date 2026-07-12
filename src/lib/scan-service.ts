@@ -130,7 +130,7 @@ export async function runFirewallScan(input: {
     },
     meta: {
       engine: 'WatchTower v1',
-      network: 'X Layer Mainnet',
+      network: chainResolution.chainName,
       reportUrl: `${SITE_URL}/report/${report.scanHash}`,
     },
   };
@@ -181,7 +181,7 @@ export async function runDeepScan(input: {
     recommendations: generateRecommendations(report.recommendation, report.modules),
     meta: {
       engine: 'WatchTower v1',
-      network: 'X Layer Mainnet',
+      network: chainResolution.chainName,
       reportUrl: `${SITE_URL}/report/${report.scanHash}`,
     },
   };
