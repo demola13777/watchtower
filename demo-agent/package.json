@@ -1,0 +1,22 @@
+{
+  "name": "watchtower-demo-agent",
+  "version": "1.0.0",
+  "description": "Provider-agnostic autonomous trading agent powered by Watch Tower security middleware",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@openrouter/ai-sdk-provider": "^0.4.0",
+    "ai": "^4.3.0",
+    "chalk": "^5.4.1",
+    "dotenv": "^16.5.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
