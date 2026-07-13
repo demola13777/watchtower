@@ -39,7 +39,7 @@ export interface Web3PaymentRequirement {
 }
 
 export interface PaymentReceipt {
-  mode: 'self-hosted-web3-verification';
+  mode: 'self-hosted-web3-verification' | 'demo';
   tier: string;
   amountUsdt: number;
   currency: string;
@@ -349,7 +349,48 @@ export class SelfHostedWeb3PaymentService implements PaymentService {
   }
 }
 
-export const paymentService: PaymentService = new SelfHostedWeb3PaymentService();
+// ─── Demo Mode ────────────────────────────────────────────────────────────────
+// When WATCHTOWER_DEMO_MODE=true, the payment middleware simulates a successful
+// L402 authorization. The full request path is exercised (validation, chain
+// resolution, MCP server, scan engine) — only the blockchain payment is skipped.
+// Production behavior is completely unchanged when the flag is absent or false.
+// ──────────────────────────────────────────────────────────────────────────────
+
+const IS_DEMO_MODE = process.env.WATCHTOWER_DEMO_MODE === 'true';
+
+export function isDemoReceipt(receipt: PaymentReceipt): boolean {
+  return receipt.mode === 'demo';
+}
+
+class DemoPaymentService implements PaymentService {
+  async validatePayment({ costUsdt, tier, requestHash }: PaymentRequest): Promise<PaymentResult> {
+    logger.payment('demo_bypass', {
+      tier,
+      amount: costUsdt.toString(),
+      note: 'WATCHTOWER_DEMO_MODE active — simulating successful L402 authorization',
+    });
+
+    return {
+      ok: true,
+      receipt: {
+        mode: 'demo',
+        tier,
+        amountUsdt: costUsdt,
+        currency: 'USDT0',
+        network: 'X Layer Mainnet (Demo)',
+        chainId: 196,
+        payer: '0x0000000000000000000000000000000000000000',
+        settlementTxHash: '0x' + '0'.repeat(64),
+        paymentId: crypto.randomUUID(),
+        requestHash,
+      },
+    };
+  }
+}
+
+export const paymentService: PaymentService = IS_DEMO_MODE
+  ? new DemoPaymentService()
+  : new SelfHostedWeb3PaymentService();
 
 export async function requirePayment(
   request: Request,

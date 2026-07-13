@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { createWatchTowerMcpServer } from './mcp-server';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { claimPaymentProcessing, completePayment, createPaymentRequestHash, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader, type PaymentReceipt } from '@/lib/payment';
+import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader, type PaymentReceipt } from '@/lib/payment';
 import { scanRequestSchema } from '@/lib/validation';
 import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
@@ -130,7 +130,8 @@ export async function POST(req: Request): Promise<Response> {
     // Create a new server instance per request.
     // In stateless HTTP, the transport is unique to the request,
     // and an MCP server can only connect to one transport at a time.
-    if (paymentResult.receipt) {
+    // Claim payment processing — skip DB operations for demo receipts
+    if (paymentResult.receipt && !isDemoReceipt(paymentResult.receipt)) {
       const claim = await claimPaymentProcessing(paymentResult.receipt.paymentId);
       if (claim.state === 'completed') {
         return setPaymentResponseHeader(
@@ -164,8 +165,11 @@ export async function POST(req: Request): Promise<Response> {
 
     if (!paymentResult.receipt) return response;
 
-    const responsePayload = await response.clone().text();
-    await completePayment(paymentResult.receipt.paymentId, responsePayload);
+    // Complete payment — skip DB write for demo receipts
+    if (!isDemoReceipt(paymentResult.receipt)) {
+      const responsePayload = await response.clone().text();
+      await completePayment(paymentResult.receipt.paymentId, responsePayload);
+    }
     return setPaymentResponseHeader(response, paymentResult.receipt);
   } catch (error: unknown) {
     if (claimedPaymentId) {
