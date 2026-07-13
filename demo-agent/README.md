@@ -1,7 +1,7 @@
 # Watch Tower — Autonomous Trading Agent Demo
 
 > Provider-agnostic autonomous trading agent powered by Watch Tower security middleware.  
-> Built for the **X Layer Hackathon 2025**.
+> Built for the **X Layer Hackathon 2026**.
 
 ## Architecture
 

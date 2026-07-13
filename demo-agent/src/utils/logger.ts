@@ -27,7 +27,7 @@ export async function printBoot(mcpUrl: string): Promise<void> {
   console.log('');
   console.log(chalk.bold.cyan('  ╔══════════════════════════════════════════════════════════╗'));
   console.log(chalk.bold.cyan('  ║     Watch Tower — Autonomous Trading Agent Demo         ║'));
-  console.log(chalk.bold.cyan('  ║                  X Layer Hackathon 2025                  ║'));
+  console.log(chalk.bold.cyan('  ║                  X Layer Hackathon 2026                  ║'));
   console.log(chalk.bold.cyan('  ╚══════════════════════════════════════════════════════════╝'));
   console.log('');
   console.log(chalk.dim(`  MCP Endpoint: ${mcpUrl}`));
