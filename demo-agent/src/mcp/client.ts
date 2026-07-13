@@ -6,6 +6,8 @@
 // middleware — the agent CANNOT trade without consulting it.
 // ───────────────────────────────────────────────────────────────
 
+export type ScanMode = 'firewall' | 'deep';
+
 export interface WatchTowerScanResult {
   reportType: string;
   tier: string;
@@ -24,6 +26,7 @@ export interface WatchTowerScanResult {
     threatScore: number;
     confidence: number;
     recommendation: 'TRADE' | 'CAUTION' | 'ABORT';
+    summary?: string;
   };
   intelligenceModules: Array<{
     name: string;
@@ -37,6 +40,7 @@ export interface WatchTowerScanResult {
     scanHash: string;
     txHash?: string;
   };
+  recommendations?: string[];
   meta: {
     engine: string;
     network: string;
@@ -64,14 +68,38 @@ export class WatchTowerMCPClient {
 
   /**
    * Execute a scan_token call through the MCP interface.
-   * This is the mandatory security gate — no trade executes without this.
+   * Quick firewall-level threat scan.
    */
   async scanToken(tokenAddress: string, chainId?: string): Promise<WatchTowerScanResult> {
+    return this.callTool('scan_token', tokenAddress, chainId);
+  }
+
+  /**
+   * Execute a deep_scan_token call through the MCP interface.
+   * Comprehensive report with on-chain attestation and report page.
+   */
+  async deepScanToken(tokenAddress: string, chainId?: string): Promise<WatchTowerScanResult> {
+    return this.callTool('deep_scan_token', tokenAddress, chainId);
+  }
+
+  /**
+   * Convenience method — picks the right tool based on scan mode.
+   */
+  async scan(mode: ScanMode, tokenAddress: string, chainId?: string): Promise<WatchTowerScanResult> {
+    return mode === 'deep'
+      ? this.deepScanToken(tokenAddress, chainId)
+      : this.scanToken(tokenAddress, chainId);
+  }
+
+  /**
+   * Internal helper — calls any scan tool by name and parses the response.
+   */
+  private async callTool(toolName: string, tokenAddress: string, chainId?: string): Promise<WatchTowerScanResult> {
     const args: Record<string, string> = { tokenAddress };
     if (chainId) args.chainId = chainId;
 
     const response = await this.rpc('tools/call', {
-      name: 'scan_token',
+      name: toolName,
       arguments: args,
     });
 

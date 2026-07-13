@@ -6,15 +6,38 @@
 // before every trade.
 //
 // Usage:
-//   npm start                    # Run with default demo token
-//   npm start -- <token_address> # Scan a specific token
+//   npm start                          # Firewall scan (default)
+//   npm start -- <token_address>       # Firewall scan a specific token
+//   npm start -- --deep                # Deep scan with default demo token
+//   npm start -- --deep <token_address> # Deep scan a specific token
 // ───────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
 import { AgentWorkflow } from './agent/workflow.js';
 import { createProvider } from './providers/index.js';
 import type { MarketOpportunity } from './agent/types.js';
+import type { ScanMode } from './mcp/client.js';
 import * as log from './utils/logger.js';
+
+// ── CLI Argument Parsing ─────────────────────────────────────
+// Parses --deep flag and token address from process.argv.
+// Order doesn't matter: `--deep 0xABC` and `0xABC --deep` both work.
+
+function parseArgs(): { scanMode: ScanMode; tokenAddress?: string } {
+  const args = process.argv.slice(2);
+  let scanMode: ScanMode = 'firewall';
+  let tokenAddress: string | undefined;
+
+  for (const arg of args) {
+    if (arg === '--deep') {
+      scanMode = 'deep';
+    } else if (arg.startsWith('0x') || arg.startsWith('0X')) {
+      tokenAddress = arg;
+    }
+  }
+
+  return { scanMode, tokenAddress };
+}
 
 // ── Demo Scenarios ────────────────────────────────────────────
 // Predefined market opportunities for the hackathon demo.
@@ -35,20 +58,21 @@ const DEMO_OPPORTUNITIES: MarketOpportunity[] = [
 
 async function main(): Promise<void> {
   try {
+    const { scanMode, tokenAddress } = parseArgs();
+
     // Resolve the MCP endpoint
     const mcpUrl = process.env.WATCHTOWER_MCP_URL || 'http://localhost:3000/api/mcp';
 
     // Create the LLM provider
     const provider = createProvider();
 
-    // Initialize the workflow
-    const workflow = new AgentWorkflow(mcpUrl, provider);
+    // Initialize the workflow with scan mode
+    const workflow = new AgentWorkflow(mcpUrl, provider, scanMode);
     await workflow.boot();
 
     // Determine which tokens to scan
-    const cliToken = process.argv[2];
-    const opportunities: MarketOpportunity[] = cliToken
-      ? [{ tokenAddress: cliToken, label: 'CLI-provided token' }]
+    const opportunities: MarketOpportunity[] = tokenAddress
+      ? [{ tokenAddress, label: 'CLI-provided token' }]
       : DEMO_OPPORTUNITIES;
 
     // Execute the workflow for each opportunity

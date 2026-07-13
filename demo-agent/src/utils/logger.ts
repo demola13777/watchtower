@@ -8,7 +8,7 @@
 
 import chalk from 'chalk';
 import type { PolicyDecision, AgentDecision } from '../agent/types.js';
-import type { WatchTowerScanResult } from '../mcp/client.js';
+import type { WatchTowerScanResult, ScanMode } from '../mcp/client.js';
 
 const DIVIDER = chalk.dim('━'.repeat(64));
 const THIN_DIVIDER = chalk.dim('─'.repeat(64));
@@ -46,6 +46,14 @@ export function printMcpConnected(tools: string[]): void {
  */
 export function printProviderInfo(name: string, model: string): void {
   console.log(chalk.dim(`  LLM Provider: ${name} (${model})`));
+}
+
+/**
+ * Print the active scan mode.
+ */
+export function printScanMode(mode: ScanMode): void {
+  const label = mode === 'deep' ? 'Deep Scan (Tier 1 — Full Report + On-Chain Attestation)' : 'Firewall Scan (Tier 2 — Quick Threat Check)';
+  console.log(chalk.dim(`  Scan Mode:    ${label}`));
   console.log('');
 }
 
@@ -77,9 +85,10 @@ export async function printMarketAlert(tokenAddress: string, label?: string): Pr
 
 // ─── Stage 2: Security Check ──────────────────────────────────
 
-export async function printSecurityCheckStart(): Promise<void> {
+export async function printSecurityCheckStart(mode: ScanMode = 'firewall'): Promise<void> {
+  const scanLabel = mode === 'deep' ? 'deep scan' : 'firewall scan';
   console.log(chalk.blue.bold('  🔵  Security Verification'));
-  console.log(chalk.white('     Initiating mandatory Watch Tower security verification...'));
+  console.log(chalk.white(`     Initiating mandatory Watch Tower ${scanLabel}...`));
   await pause(600);
 }
 

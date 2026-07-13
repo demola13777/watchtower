@@ -14,7 +14,7 @@
 
 import type { LLMProvider } from '../providers/types.js';
 import type { AgentDecision, MarketOpportunity } from './types.js';
-import { WatchTowerMCPClient } from '../mcp/client.js';
+import { WatchTowerMCPClient, type ScanMode } from '../mcp/client.js';
 import { evaluatePolicy, getPolicyRationale } from './policy.js';
 import { AgentMemory } from './memory.js';
 import { SYSTEM_PROMPT, buildAnalysisPrompt } from '../prompts/system.js';
@@ -24,11 +24,13 @@ export class AgentWorkflow {
   private mcp: WatchTowerMCPClient;
   private llm: LLMProvider;
   private memory: AgentMemory;
+  private scanMode: ScanMode;
 
-  constructor(mcpEndpoint: string, llmProvider: LLMProvider) {
+  constructor(mcpEndpoint: string, llmProvider: LLMProvider, scanMode: ScanMode = 'firewall') {
     this.mcp = new WatchTowerMCPClient(mcpEndpoint);
     this.llm = llmProvider;
     this.memory = new AgentMemory();
+    this.scanMode = scanMode;
   }
 
   /**
@@ -42,8 +44,9 @@ export class AgentWorkflow {
     const tools = await this.mcp.verifyConnection();
     log.printMcpConnected(tools);
 
-    // Display LLM provider info
+    // Display LLM provider info and scan mode
     log.printProviderInfo(this.llm.name, this.llm.model);
+    log.printScanMode(this.scanMode);
   }
 
   /**
@@ -73,11 +76,11 @@ export class AgentWorkflow {
     await log.printMarketAlert(tokenAddress, label);
 
     // ── Stage 2: Security Check (Watch Tower MCP) ─────────────
-    await log.printSecurityCheckStart();
+    await log.printSecurityCheckStart(this.scanMode);
 
     let scanResult;
     try {
-      scanResult = await this.mcp.scanToken(tokenAddress, chainId);
+      scanResult = await this.mcp.scan(this.scanMode, tokenAddress, chainId);
     } catch (error) {
       log.printError('Watch Tower Security Check', error);
       // If Watch Tower is unavailable, the agent CANNOT proceed.
