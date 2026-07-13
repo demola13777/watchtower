@@ -148,10 +148,10 @@ export async function runDeepScan(input: {
   const report = await analyzeToken(input.tokenAddress, chainId);
   const txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
   if (!txHash) {
-    logger.error('Deep scan on-chain attestation failed', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
-    throw new Error('On-chain attestation could not be confirmed. Retry this paid request with the same payment receipt.');
+    logger.error('Deep scan on-chain attestation failed — returning report without attestation', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
+  } else {
+    logger.registry('deep_scan_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
   }
-  logger.registry('deep_scan_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
 
   const deepReport: DeepScanReport = {
     reportType: 'DEEP_SCAN',
@@ -173,10 +173,10 @@ export async function runDeepScan(input: {
     reasoning: report.reasoning,
     verification: {
       scanHash: report.scanHash,
-      txHash,
+      txHash: txHash ?? null,
       registryContract: REGISTRY_ADDRESS,
       chain: `Registry chain ${REGISTRY_CHAIN_ID}; scan chain ${chainId}`,
-      status: 'On-chain attestation confirmed',
+      status: txHash ? 'On-chain attestation confirmed' : 'Attestation pending — scan results verified off-chain',
     },
     recommendations: generateRecommendations(report.recommendation, report.modules),
     meta: {

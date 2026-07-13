@@ -20,6 +20,9 @@ import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 // Force Node.js runtime (not Edge) for SQLite/viem compatibility
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Deep scans perform on-chain attestation which can take 15-30s.
+// Default Vercel timeout (10s) is too short — raise to 60s.
+export const maxDuration = 60;
 
 type JsonRpcToolCall = {
   id?: unknown;

@@ -156,6 +156,8 @@ export class WatchTowerMCPClient {
         Accept: 'application/json, text/event-stream',
       },
       body: JSON.stringify(body),
+      // Deep scans perform on-chain attestation — allow up to 90s
+      signal: AbortSignal.timeout(90_000),
     });
 
     if (!res.ok) {

@@ -47,11 +47,13 @@ function parseArgs(): { scanMode: ScanMode; tokenAddress?: string } {
 const DEMO_OPPORTUNITIES: MarketOpportunity[] = [
   {
     tokenAddress: '0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D',
+    chainId: '1952',
     label: 'Newly launched token — high activity detected',
   },
   {
     // Re-scan the same token to demonstrate memory
     tokenAddress: '0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D',
+    chainId: '1952',
     label: 'Same token detected again — testing agent memory',
   },
 ];
