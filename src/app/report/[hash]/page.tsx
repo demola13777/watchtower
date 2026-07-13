@@ -339,7 +339,7 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
 
           {/* Navigation Links */}
           <div className="flex-none flex justify-center gap-6 text-xs mt-1 mb-2 font-medium tracking-wide">
-            <Link href="/" className="text-slate-500 hover:text-cyan-400 transition-colors flex items-center gap-1">
+            <Link href="/network" className="text-slate-500 hover:text-cyan-400 transition-colors flex items-center gap-1">
               <span className="mb-0.5">←</span> Network Explorer
             </Link>
             {txHash && (
