@@ -131,7 +131,6 @@ export async function runFirewallScan(input: {
     meta: {
       engine: 'WatchTower v1',
       network: chainResolution.chainName,
-      reportUrl: `${SITE_URL}/report/${report.scanHash}`,
     },
   };
 }

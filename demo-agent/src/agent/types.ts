@@ -32,10 +32,12 @@ export interface AgentDecision {
   chainName?: string;
   /** Timestamp of the decision */
   timestamp: string;
-  /** Watch Tower report URL */
+  /** Watch Tower report URL (deep scan only) */
   reportUrl?: string;
   /** On-chain scan hash */
   scanHash?: string;
+  /** Which scan tier was used */
+  scanMode?: 'firewall' | 'deep';
 }
 
 /** A market opportunity that triggers the agent workflow */

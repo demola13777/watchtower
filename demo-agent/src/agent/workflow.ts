@@ -153,8 +153,9 @@ export class AgentWorkflow {
       tokenAddress,
       chainName: scanResult.meta?.network,
       timestamp: new Date().toISOString(),
-      reportUrl: scanResult.meta?.reportUrl,
+      reportUrl: this.scanMode === 'deep' ? scanResult.meta?.reportUrl : undefined,
       scanHash: scanResult.verification?.scanHash,
+      scanMode: this.scanMode,
     };
 
     await log.printFinalDecision(decision);

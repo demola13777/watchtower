@@ -115,12 +115,12 @@ export class WatchTowerMCPClient {
     }
 
     if (response.isError) {
+      let errorMessage = textBlock.text;
       try {
         const parsed = JSON.parse(textBlock.text);
-        throw new Error(parsed.error || textBlock.text);
-      } catch {
-        throw new Error(textBlock.text);
-      }
+        if (parsed.error) errorMessage = parsed.error;
+      } catch { /* not JSON — use raw text */ }
+      throw new Error(errorMessage);
     }
 
     try {

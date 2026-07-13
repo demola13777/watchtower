@@ -216,7 +216,7 @@ export async function printClosingSequence(decision: AgentDecision): Promise<voi
     await pause(200);
     console.log(chalk.green('  ✓  User funds protected.'));
     await pause(200);
-    if (decision.scanHash) {
+    if (decision.scanMode === 'deep' && decision.scanHash) {
       console.log(chalk.green('  ✓  Security attestation recorded on-chain.'));
       await pause(200);
     }

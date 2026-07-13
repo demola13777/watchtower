@@ -81,7 +81,7 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
         
         const errorMessage = error instanceof ChainResolutionError 
           ? error.message 
-          : 'Internal scan error';
+          : error instanceof Error ? error.message : 'Internal scan error';
 
         return {
           content: [
@@ -141,7 +141,7 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
 
         const errorMessage = error instanceof ChainResolutionError 
           ? error.message 
-          : 'Internal deep scan error';
+          : error instanceof Error ? error.message : 'Internal deep scan error';
 
         return {
           content: [
