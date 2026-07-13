@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { runDeepScan, runFirewallScan } from '@/lib/scan-service';
+import { runDeepScan, runFirewallScan, resolveScanChain, ChainResolutionError } from '@/lib/scan-service';
 import { mcpScanInputSchema, scanRequestSchema } from '@/lib/validation';
 
 // ---------------------------------------------------------------------------
@@ -61,9 +61,11 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
       }
 
       try {
+        const chainResolution = await resolveScanChain(parsed.data);
         const report = await runFirewallScan({
           ...parsed.data,
           agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? 'mcp_agent',
+          chainResolution,
         });
 
         return {
@@ -76,11 +78,16 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
         };
       } catch (error: unknown) {
         console.error('[WatchTower MCP] scan_token error:', error);
+        
+        const errorMessage = error instanceof ChainResolutionError 
+          ? error.message 
+          : 'Internal scan error';
+
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify({ error: 'Internal scan error' }),
+              text: JSON.stringify({ error: errorMessage }),
             },
           ],
           isError: true,
@@ -114,9 +121,11 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
       }
 
       try {
+        const chainResolution = await resolveScanChain(parsed.data);
         const deepReport = await runDeepScan({
           ...parsed.data,
           agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? 'mcp_agent',
+          chainResolution,
         });
 
         return {
@@ -129,11 +138,16 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
         };
       } catch (error: unknown) {
         console.error('[WatchTower MCP] deep_scan_token error:', error);
+
+        const errorMessage = error instanceof ChainResolutionError 
+          ? error.message 
+          : 'Internal deep scan error';
+
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify({ error: 'Internal deep scan error' }),
+              text: JSON.stringify({ error: errorMessage }),
             },
           ],
           isError: true,

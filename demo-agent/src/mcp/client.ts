@@ -114,9 +114,25 @@ export class WatchTowerMCPClient {
       throw new Error('Watch Tower response missing text content. Security verification failed.');
     }
 
+    if (response.isError) {
+      try {
+        const parsed = JSON.parse(textBlock.text);
+        throw new Error(parsed.error || textBlock.text);
+      } catch {
+        throw new Error(textBlock.text);
+      }
+    }
+
     try {
-      return JSON.parse(textBlock.text) as WatchTowerScanResult;
-    } catch {
+      const parsed = JSON.parse(textBlock.text) as WatchTowerScanResult | { error: string };
+      if ('error' in parsed && parsed.error) {
+        throw new Error(parsed.error);
+      }
+      return parsed as WatchTowerScanResult;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message !== 'Unexpected token') {
+        throw err;
+      }
       throw new Error(`Watch Tower returned unparseable response: ${textBlock.text}`);
     }
   }
