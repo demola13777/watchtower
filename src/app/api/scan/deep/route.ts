@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { claimPaymentProcessing, completePayment, createPaymentRequestHash, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
+import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
 import { ChainResolutionError, resolveScanChain, runDeepScan } from '@/lib/scan-service';
 import { scanRequestSchema } from '@/lib/validation';
 
@@ -33,17 +33,20 @@ export async function POST(req: Request) {
     const payment = await requirePayment(req, SCAN_PRICING_USDT.deep, 'Tier 1 - Deep Scan', requestHash);
     if (!payment.ok) return paymentRequiredResponse(payment.failure);
 
-    const claim = await claimPaymentProcessing(payment.receipt.paymentId);
-    if (claim.state === 'completed') {
-      return setPaymentResponseHeader(NextResponse.json(JSON.parse(claim.responsePayload)), payment.receipt);
+    // Claim payment processing — skip DB operations for demo receipts
+    if (!isDemoReceipt(payment.receipt)) {
+      const claim = await claimPaymentProcessing(payment.receipt.paymentId);
+      if (claim.state === 'completed') {
+        return setPaymentResponseHeader(NextResponse.json(JSON.parse(claim.responsePayload)), payment.receipt);
+      }
+      if (claim.state === 'processing') {
+        return NextResponse.json(
+          { error: 'Your paid scan is already processing. Retry this same request shortly.' },
+          { status: 409, headers: { 'Retry-After': '2' } },
+        );
+      }
+      claimedPaymentId = payment.receipt.paymentId;
     }
-    if (claim.state === 'processing') {
-      return NextResponse.json(
-        { error: 'Your paid scan is already processing. Retry this same request shortly.' },
-        { status: 409, headers: { 'Retry-After': '2' } },
-      );
-    }
-    claimedPaymentId = payment.receipt.paymentId;
 
     const deepReport = await runDeepScan({
       ...input,
@@ -51,7 +54,9 @@ export async function POST(req: Request) {
       chainResolution,
     });
     const responseBody = { success: true, data: deepReport };
-    await completePayment(payment.receipt.paymentId, JSON.stringify(responseBody));
+    if (!isDemoReceipt(payment.receipt)) {
+      await completePayment(payment.receipt.paymentId, JSON.stringify(responseBody));
+    }
 
     return setPaymentResponseHeader(
       NextResponse.json(responseBody),
