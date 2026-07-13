@@ -49,3 +49,9 @@ dev-server*.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# watchtower-launch (Remotion video project)
+watchtower-launch/.venv/
+watchtower-launch/node_modules/
+watchtower-launch/out/
+watchtower-launch/dist/
