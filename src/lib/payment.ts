@@ -388,17 +388,24 @@ class DemoPaymentService implements PaymentService {
   }
 }
 
-export const paymentService: PaymentService = IS_DEMO_MODE
-  ? new DemoPaymentService()
-  : new SelfHostedWeb3PaymentService();
+const realPaymentService = new SelfHostedWeb3PaymentService();
+const demoPaymentService = new DemoPaymentService();
+
+// Default export for backward compatibility — always the real service.
+// Use requirePayment() with allowDemoBypass for controlled demo access.
+export const paymentService: PaymentService = realPaymentService;
 
 export async function requirePayment(
   request: Request,
   costUsdt: number,
   tier: string,
   requestHash?: string,
+  options?: { allowDemoBypass?: boolean },
 ): Promise<PaymentResult> {
-  return paymentService.validatePayment({ request, costUsdt, tier, requestHash });
+  const service = (options?.allowDemoBypass && IS_DEMO_MODE)
+    ? demoPaymentService
+    : realPaymentService;
+  return service.validatePayment({ request, costUsdt, tier, requestHash });
 }
 
 export async function getCompletedPaymentResponse(paymentId: string): Promise<string | null> {

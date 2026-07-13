@@ -109,6 +109,7 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
     requiresDeepScan ? SCAN_PRICING_USDT.deep : SCAN_PRICING_USDT.firewall,
     requiresDeepScan ? 'Tier 1 - Deep Scan' : 'Tier 2 - API Firewall',
     requestHash,
+    { allowDemoBypass: true },
   );
 
   return payment.ok
