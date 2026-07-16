@@ -1,11 +1,19 @@
+/**
+ * x402 Payment Protocol Test — Standard OKX Facilitator
+ *
+ * Tests that WatchTower's 402 challenge matches the x402 v2 spec:
+ *   - Returns 402 with PAYMENT-REQUIRED header
+ *   - Challenge contains x402Version: 2
+ *   - accepts[] has scheme: "exact", network: "eip155:*", payTo, amount, asset
+ *   - Malformed/missing PAYMENT-SIGNATURE returns 402 (not crash)
+ */
+
 const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
 const SCAN_URL = `${API_URL}/api/scan`;
+const DEEP_SCAN_URL = `${API_URL}/api/scan/deep`;
 const TOKEN = process.env.PAYMENT_TEST_TOKEN || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
 const AGENT = process.env.PAYMENT_TEST_AGENT || '0x0000000000000000000000000000000000000BEE';
 const CHAIN_ID = process.env.PAYMENT_TEST_CHAIN_ID;
-const PAYMENT_TEST_TX_HASH = process.env.PAYMENT_TEST_TX_HASH;
-const PAYMENT_TEST_PAYMENT_ID = process.env.PAYMENT_TEST_PAYMENT_ID;
-const PAYMENT_REPLAY_TX_HASH = process.env.PAYMENT_REPLAY_TX_HASH;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -15,12 +23,11 @@ function decodeBase64Json(value) {
   return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
 }
 
-async function postScan(txHash, paymentId) {
+async function postScan(url, paymentSignature) {
   const headers = { 'Content-Type': 'application/json' };
-  if (txHash) headers.Authorization = `L402 ${txHash}`;
-  if (paymentId) headers['X-WatchTower-Payment-Id'] = paymentId;
+  if (paymentSignature) headers['PAYMENT-SIGNATURE'] = paymentSignature;
 
-  return fetch(SCAN_URL, {
+  return fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -38,56 +45,65 @@ async function main() {
     throw new Error(`WatchTower server is not reachable at ${API_URL}. Start it with: npm run dev`);
   }
 
-  console.log('1. missing Authorization returns HTTP 402 payment requirement');
-  const unpaid = await postScan();
+  // ── Test 1: Firewall scan (0.5 USDT) returns standard x402 challenge ────
+  console.log('1. Missing PAYMENT-SIGNATURE returns HTTP 402 with standard x402 challenge');
+  const unpaid = await postScan(SCAN_URL);
   assert(unpaid.status === 402, `Expected 402 without payment, got ${unpaid.status}`);
 
   const encoded = unpaid.headers.get('PAYMENT-REQUIRED');
-  assert(encoded, 'Expected PAYMENT-REQUIRED header');
-  const requirement = decodeBase64Json(encoded);
+  assert(encoded, 'Expected PAYMENT-REQUIRED header in 402 response');
 
-  assert(requirement.scheme === 'evm-erc20-transfer', `Unexpected payment scheme: ${requirement.scheme}`);
-  assert(requirement.amount === '0.5', `Expected firewall price 0.5, got ${requirement.amount}`);
-  assert(typeof requirement.chainId === 'number', 'Expected numeric chainId');
-  assert(/^0x[a-fA-F0-9]{40}$/.test(requirement.tokenAddress || ''), 'Expected token contract address');
-  assert(/^0x[a-fA-F0-9]{40}$/.test(requirement.payTo || ''), 'Expected treasury address');
-  assert(/^[0-9a-f-]{36}$/i.test(requirement.paymentId || ''), 'Expected request-bound payment id');
+  const challenge = decodeBase64Json(encoded);
+  assert(challenge.x402Version === 2, `Expected x402Version 2, got ${challenge.x402Version}`);
+  assert(challenge.resource, 'Expected resource field in challenge');
+  assert(Array.isArray(challenge.accepts), 'Expected accepts[] array in challenge');
+  assert(challenge.accepts.length > 0, 'Expected at least one payment option in accepts[]');
 
-  if (PAYMENT_REPLAY_TX_HASH) {
-    console.log('2. a previously consumed settlement hash is rejected for a fresh payment intent');
-    const replay = await postScan(PAYMENT_REPLAY_TX_HASH, requirement.paymentId);
-    assert(replay.status === 409, `Expected replay to be rejected with 409, got ${replay.status}`);
-  }
+  const option = challenge.accepts[0];
+  assert(option.scheme === 'exact', `Expected scheme "exact", got ${option.scheme}`);
+  assert(option.network?.startsWith('eip155:'), `Expected CAIP-2 network "eip155:*", got ${option.network}`);
+  assert(/^0x[a-fA-F0-9]{40}$/.test(option.payTo || ''), `Expected valid payTo address, got ${option.payTo}`);
+  assert(option.amount, `Expected amount field, got ${option.amount}`);
+  assert(option.asset || option.amount, 'Expected asset or amount field');
+  assert(option.maxTimeoutSeconds > 0, `Expected positive maxTimeoutSeconds, got ${option.maxTimeoutSeconds}`);
 
-  console.log('3. malformed L402 credential is rejected');
-  const malformed = await postScan('0x1234');
-  assert(malformed.status === 402, `Expected malformed credential to request payment again, got ${malformed.status}`);
+  console.log(`   ✓ Challenge: scheme=${option.scheme}, network=${option.network}, payTo=${option.payTo}, amount=${option.amount}`);
 
-  console.log('4. settlement hash without its payment id is rejected');
-  const missingIntent = await postScan(`0x${'0'.repeat(64)}`);
-  assert(missingIntent.status === 401, `Expected missing payment id to be rejected, got ${missingIntent.status}`);
+  // Also verify the JSON body contains the challenge
+  const body = await unpaid.json();
+  assert(body.paymentRequired, 'Expected paymentRequired in JSON response body');
+  assert(body.paymentRequired.x402Version === 2, 'Expected x402Version 2 in body');
 
-  if (!PAYMENT_TEST_TX_HASH || !PAYMENT_TEST_PAYMENT_ID) {
-    console.log('5. PAYMENT_TEST_TX_HASH and PAYMENT_TEST_PAYMENT_ID not set; skipping live settlement verification.');
-    console.log('Self-hosted x402 challenge tests passed.');
-    return;
-  }
+  // ── Test 2: Deep scan (1 USDT) returns the same structure ───────────────
+  console.log('2. Deep scan endpoint also returns standard x402 challenge');
+  const deepUnpaid = await postScan(DEEP_SCAN_URL);
+  assert(deepUnpaid.status === 402, `Expected 402 for deep scan, got ${deepUnpaid.status}`);
 
-  console.log('5. valid settlement transaction unlocks scan');
-  const paid = await postScan(PAYMENT_TEST_TX_HASH, PAYMENT_TEST_PAYMENT_ID);
-  if (paid.status !== 200) {
-    throw new Error(`Expected successful paid scan, got ${paid.status}: ${await paid.text()}`);
-  }
-  assert(paid.headers.get('PAYMENT-RESPONSE'), 'Expected PAYMENT-RESPONSE header');
+  const deepEncoded = deepUnpaid.headers.get('PAYMENT-REQUIRED');
+  assert(deepEncoded, 'Expected PAYMENT-REQUIRED header for deep scan');
+  const deepChallenge = decodeBase64Json(deepEncoded);
+  assert(deepChallenge.x402Version === 2, `Expected x402Version 2 for deep scan`);
+  assert(deepChallenge.accepts[0].scheme === 'exact', 'Expected exact scheme for deep scan');
+  console.log(`   ✓ Deep scan challenge validated`);
 
-  console.log('6. retrying the same paid request returns its idempotent result');
-  const retry = await postScan(PAYMENT_TEST_TX_HASH, PAYMENT_TEST_PAYMENT_ID);
-  assert(retry.status === 200, `Expected idempotent retry to succeed, got ${retry.status}: ${await retry.text()}`);
+  // ── Test 3: Malformed PAYMENT-SIGNATURE is handled gracefully ───────────
+  console.log('3. Malformed PAYMENT-SIGNATURE is handled gracefully (returns 402)');
+  const malformed = await postScan(SCAN_URL, 'not-valid-base64!@#$');
+  assert(malformed.status === 402, `Expected 402 for malformed signature, got ${malformed.status}`);
+  console.log('   ✓ Malformed signature returns fresh challenge');
 
-  console.log('Self-hosted x402 live verification tests passed.');
+  // ── Test 4: Empty PAYMENT-SIGNATURE treated as no payment ───────────────
+  console.log('4. Empty PAYMENT-SIGNATURE treated as no payment');
+  const empty = await postScan(SCAN_URL, '');
+  assert(empty.status === 402, `Expected 402 for empty signature, got ${empty.status}`);
+  console.log('   ✓ Empty signature returns 402');
+
+  console.log('\n✅ All x402 standard payment tests passed.');
+  console.log('   The 402 challenges conform to x402 v2 spec with the "exact" scheme.');
+  console.log('   End-to-end settlement tests require agent wallet funds — skipped.');
 }
 
 main().catch((error) => {
-  console.error(error.message);
+  console.error('❌', error.message);
   process.exit(1);
 });

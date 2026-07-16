@@ -375,55 +375,26 @@ export default function NetworkDashboard() {
         agentWallet: '0x000000000000000000000000000000000000dA5b',
       });
 
-      const submitDeepScan = (paymentTxHash?: string, paymentId?: string) => fetch('/api/scan/deep', {
+      const submitDeepScan = () => fetch('/api/scan/deep', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(paymentTxHash ? { Authorization: `L402 ${paymentTxHash}` } : {}),
-          ...(paymentId ? { 'X-WatchTower-Payment-Id': paymentId } : {}),
         },
         body: payload,
       });
 
-      const retryPaidDeepScan = async (paymentTxHash: string, paymentId: string) => {
-        const startedAt = Date.now();
-        const timeoutMs = 180_000;
 
-        while (Date.now() - startedAt < timeoutMs) {
-          const paidResponse = await submitDeepScan(paymentTxHash, paymentId);
-          const paidData = await paidResponse.json().catch(() => null) as { success?: boolean; message?: string; error?: string; data?: unknown } | null;
-          const message = paidData?.message || paidData?.error;
-
-          if (paidResponse.status !== 401 || !isConfirmationDepthError(message)) {
-            return { response: paidResponse, data: paidData };
-          }
-
-          setScanError(`${message} Waiting for the verification RPC to catch up...`);
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        }
-
-        throw new Error('Payment is confirmed, but server-side confirmation verification timed out. Retry the same scan shortly; the payment id remains bound to this request.');
-      };
 
       let res = await submitDeepScan();
       let data: { success?: boolean; message?: string; error?: string; data?: unknown } | null = null;
 
       if (res.status === 402) {
-        const encodedRequirement = res.headers.get('PAYMENT-REQUIRED');
-        const requirement = encodedRequirement ? decodeBase64Json<Web3PaymentRequirement>(encodedRequirement) : null;
-        if (!requirement) {
-          throw new Error('Payment challenge missing PAYMENT-REQUIRED details.');
-        }
-        if (!requirement.paymentId) {
-          throw new Error('Payment challenge is missing its request-bound payment id. Refresh and try again.');
-        }
-        setPaymentRequirement(requirement);
-        setScanError(`Confirm ${requirement.amount} ${requirement.currency} in your wallet to unlock this Deep Scan.`);
-        const txHash = await settlePaymentWithWallet(requirement, setScanError);
-        setScanError('Payment confirmed. Finalizing scan...');
-        const paidResult = await retryPaidDeepScan(txHash, requirement.paymentId);
-        res = paidResult.response;
-        data = paidResult.data as typeof data;
+        // The x402 payment protocol is designed for agent-to-agent payments.
+        // Dashboard users should enable WATCHTOWER_DEMO_MODE for web-based scans.
+        throw new Error(
+          'Payment required. Dashboard deep scans require WATCHTOWER_DEMO_MODE=true in your environment, ' +
+          'or use an agent client that supports the x402 payment protocol.'
+        );
       }
       data ??= await res.json();
       clearInterval(moduleTimer);

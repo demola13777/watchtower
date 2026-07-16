@@ -152,7 +152,7 @@ export default function Home() {
 {'  }'}, {'\n'}
 {'}'});{'\n\n'}
 <span className="text-purple-400">async function</span> <span className="text-blue-400">executeTrade</span>(targetToken) {'{'}{'\n'}
-{'  '}<span className="text-slate-500">{"// 1. Run the Firewall Scan (Costs 0.5 USDT via L402)"}</span>{'\n'}
+{'  '}<span className="text-slate-500">{"// 1. Run the Firewall Scan (Costs 0.5 USDT via x402)"}</span>{'\n'}
 {'  '}<span className="text-purple-400">const</span> intel = <span className="text-purple-400">await</span> wt.guardTransaction(targetToken);{'\n\n'}
 {'  '}<span className="text-slate-500">{"// 2. Enforce strict safety thresholds"}</span>{'\n'}
 {'  '}<span className="text-purple-400">if</span> (intel.recommendation === <span className="text-emerald-400">&apos;ABORT&apos;</span>) {'{'}{'\n'}

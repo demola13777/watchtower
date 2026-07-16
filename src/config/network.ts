@@ -129,3 +129,12 @@ export function getRequiredPaymentNetwork(): ResolvedPaymentNetworkConfig {
     },
   } as ResolvedPaymentNetworkConfig;
 }
+
+/**
+ * Returns the CAIP-2 network identifier for x402 payment requirements.
+ * Format: "eip155:{chainId}" (e.g., "eip155:196" for X Layer Mainnet).
+ */
+export function getX402Network(): string {
+  const config = getRequiredPaymentNetwork();
+  return `eip155:${config.chainId}`;
+}

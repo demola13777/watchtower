@@ -158,13 +158,11 @@ sequenceDiagram
     participant DB as Payment registry
 
     Agent->>API: POST /api/scan
-    API-->>Agent: 402 + PAYMENT-REQUIRED + paymentId
-    Agent->>Chain: Transfer configured ERC-20 to treasury
-    Chain-->>Agent: Successful transaction receipt
-    Agent->>API: Retry with L402 tx hash + paymentId
-    API->>DB: Atomically claim payment intent
-    API->>Chain: Verify chain, status, token, recipient, amount, confirmations
-    API->>DB: Record settlement and consume transaction hash
+    API-->>Agent: 402 + PAYMENT-REQUIRED
+    Agent->>Chain: Sign PaymentPayload for configured ERC-20
+    Agent->>API: Retry with PAYMENT-SIGNATURE header
+    API->>Chain: OKX Facilitator verifies signature + settles transfer
+    API->>DB: Record settlement
     API-->>Agent: Scan result or deep-scan report
 ```
 
@@ -204,7 +202,7 @@ This is a conscious V1 trade-off, not a hidden claim of full decentralization:
 | V1, implemented | Why it is the right starting point |
 | --- | --- |
 | Central WatchTower threat engine | Fast provider calls, practical operating cost, and rapid iteration on security rules. |
-| Self-hosted RPC payment verification | The server independently verifies actual ERC-20 transfers and replay state without trusting a Web2 payment gateway. |
+| Official OKX x402 Standard | Uses the OKX Facilitator to verify signatures and settle payments directly on-chain without trusting a Web2 payment gateway. |
 | Owner-operated registry writer | Keeps attestation writes reliable while the protocol and validator economics are still being proven. |
 | Public reports and registry events | Makes the result and its onchain timestamp independently inspectable. |
 
@@ -261,8 +259,7 @@ curl -X POST https://watchtowr.xyz/api/scan \
 The first protected request receives `402 Payment Required` together with `PAYMENT-REQUIRED` and `X-WatchTower-Payment-Id` headers. After settlement, retry the same request with:
 
 ```text
-Authorization: L402 <x-layer-transaction-hash>
-X-WatchTower-Payment-Id: <payment-id-from-the-402-response>
+PAYMENT-SIGNATURE: <base64-encoded-payment-payload>
 ```
 
 Invalid EVM addresses are rejected before provider calls. Unknown or ambiguous chain resolution is returned before a payment challenge. Public endpoints also use durable, fixed-window rate limiting.
@@ -385,7 +382,6 @@ src/
   lib/engine.ts            Threat modules and deterministic scoring
   lib/payment.ts           Payment intents and payment-service boundary
   lib/scan-service.ts      Shared scan orchestration
-  services/paymentVerifier.ts  Self-hosted ERC-20 verification
   lib/db/                  Drizzle schema and database access
 packages/
   watchtower-sdk/          TypeScript middleware for agent runtimes

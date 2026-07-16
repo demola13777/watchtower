@@ -218,11 +218,11 @@ POST /api/scan/deep  // Tier 1, 1 USDT
 
           <Section id="payments" icon={<Wallet className="h-4 w-4" />} title="Payments">
             <p>
-              WatchTower currently uses self-hosted Web3 verification for x402-style machine payments. Protected endpoints return <InlineCode>402 Payment Required</InlineCode> with a <InlineCode>PAYMENT-REQUIRED</InlineCode> challenge.
+              WatchTower uses the standard x402 payment protocol with the OKX facilitator for machine payments. Protected endpoints return <InlineCode>402 Payment Required</InlineCode> with a <InlineCode>PAYMENT-REQUIRED</InlineCode> challenge.
             </p>
-            <CodeBlock language="bash">{`Authorization: L402 <settlement_transaction_hash>`}</CodeBlock>
+            <CodeBlock language="bash">{`PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>`}</CodeBlock>
             <p>
-              The verifier checks transaction hash format, chain id, transaction success, token contract, treasury recipient, amount, confirmation depth, and replay status. The <InlineCode>PaymentService</InlineCode> boundary keeps the current self-hosted verifier replaceable by a facilitator or signed-envelope validator without changing scan routes or agent integrations.
+              The OKX facilitator verifies the payment signature and settles the transfer on-chain. The <InlineCode>PaymentService</InlineCode> boundary keeps the facilitator integration replaceable without changing scan routes or agent integrations.
             </p>
           </Section>
 

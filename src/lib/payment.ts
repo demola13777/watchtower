@@ -3,13 +3,21 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getActivePaymentNetwork, getRequiredPaymentNetwork } from '@/config/network';
 import { db } from '@/lib/db';
-import { payments, usedPaymentTransactions } from '@/lib/db/schema';
-import { verifyPaymentTransaction, type PaymentVerificationSuccess } from '@/services/paymentVerifier';
+import { payments } from '@/lib/db/schema';
+import {
+  buildPaymentRequired,
+  extractPaymentPayload,
+  verifyAndSettle,
+  encodePaymentRequired,
+  encodePaymentResponse,
+  getX402Network,
+  type PaymentRequired as X402PaymentRequired,
+  type SettleResponse,
+} from '@/lib/x402';
 import { logger } from '@/lib/logger';
 
 const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
 const PAYMENT_RESPONSE_HEADER = 'PAYMENT-RESPONSE';
-const PAYMENT_ID_HEADER = 'X-WatchTower-Payment-Id';
 const PAYMENT_INTENT_TTL_MS = 10 * 60 * 1000;
 
 export interface PaymentRequest {
@@ -19,27 +27,8 @@ export interface PaymentRequest {
   requestHash?: string;
 }
 
-export interface Web3PaymentRequirement {
-  x402Version: number;
-  scheme: 'evm-erc20-transfer';
-  network: string;
-  chainId: number;
-  currency: string;
-  tokenAddress: string;
-  tokenDecimals: number;
-  amount: string;
-  payTo: string;
-  resource: string;
-  method: string;
-  tier: string;
-  paymentId: string;
-  requestHash?: string;
-  minConfirmations: number;
-  instructions: string;
-}
-
 export interface PaymentReceipt {
-  mode: 'self-hosted-web3-verification' | 'demo';
+  mode: 'x402-facilitator' | 'demo';
   tier: string;
   amountUsdt: number;
   currency: string;
@@ -57,7 +46,7 @@ export interface PaymentFailure {
   message: string;
   tier: string;
   price: string;
-  paymentRequired?: Web3PaymentRequirement;
+  paymentRequired?: X402PaymentRequired;
 }
 
 export type PaymentResult =
@@ -66,10 +55,6 @@ export type PaymentResult =
 
 export interface PaymentService {
   validatePayment(input: PaymentRequest): Promise<PaymentResult>;
-}
-
-function encodeBase64Json(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
 }
 
 function canonicalize(value: unknown): unknown {
@@ -89,63 +74,11 @@ function canonicalize(value: unknown): unknown {
   return value;
 }
 
-function extractL402TxHash(request: Request): string | null {
-  const authorization = request.headers.get('Authorization') ?? '';
-  const match = authorization.match(/^L402\s+(0x[a-fA-F0-9]{64})$/);
-  return match?.[1] ?? null;
-}
-
-function extractPaymentId(request: Request): string | null {
-  const paymentId = request.headers.get(PAYMENT_ID_HEADER) ?? '';
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId)
-    ? paymentId
-    : null;
-}
-
-function getPaymentMinConfirmations(): number {
-  const configured = process.env.PAYMENT_MIN_CONFIRMATIONS;
-  if (!configured) return 1;
-  if (!/^\d+$/.test(configured)) {
-    throw new Error('PAYMENT_MIN_CONFIRMATIONS must be a non-negative integer.');
-  }
-  return Number(configured);
-}
-
 export function createPaymentRequestHash(value: unknown): string {
   return crypto
     .createHash('sha256')
     .update(JSON.stringify(canonicalize(value)))
     .digest('hex');
-}
-
-function createRequirement(
-  request: Request,
-  costUsdt: number,
-  tier: string,
-  paymentId: string,
-  requestHash?: string,
-): Web3PaymentRequirement {
-  const network = getRequiredPaymentNetwork();
-  const url = new URL(request.url);
-
-  return {
-    x402Version: 2,
-    scheme: 'evm-erc20-transfer',
-    network: network.name,
-    chainId: network.chainId,
-    currency: network.token.symbol,
-    tokenAddress: network.token.address,
-    tokenDecimals: network.token.decimals,
-    amount: costUsdt.toString(),
-    payTo: network.treasuryAddress,
-    resource: url.pathname,
-    method: request.method.toUpperCase(),
-    tier,
-    paymentId,
-    requestHash,
-    minConfirmations: getPaymentMinConfirmations(),
-    instructions: 'Transfer the required token amount to payTo on the configured chain, wait for the required confirmation depth, then retry with Authorization: L402 <transaction_hash> and X-WatchTower-Payment-Id <payment_id>.',
-  };
 }
 
 function failure(
@@ -154,7 +87,7 @@ function failure(
   message: string,
   tier: string,
   price: string,
-  paymentRequired?: Web3PaymentRequirement,
+  paymentRequired?: X402PaymentRequired,
 ): PaymentResult {
   return { ok: false, failure: { status, error, message, tier, price, paymentRequired } };
 }
@@ -164,31 +97,46 @@ async function createPaymentIntent(
   costUsdt: number,
   tier: string,
   requestHash?: string,
-): Promise<Web3PaymentRequirement> {
+): Promise<X402PaymentRequired> {
   const paymentId = crypto.randomUUID();
-  const requirement = createRequirement(request, costUsdt, tier, paymentId, requestHash);
+  const network = getRequiredPaymentNetwork();
+
+  // Build the standard x402 PaymentRequired challenge via the SDK
+  const paymentRequired = await buildPaymentRequired(
+    request,
+    costUsdt,
+    `WatchTower ${tier} scan`,
+  );
+
   const now = Date.now();
 
   await db.insert(payments).values({
     paymentId,
     status: 'pending',
     tier,
-    amount: requirement.amount,
-    currency: requirement.currency,
-    network: requirement.network,
-    scheme: requirement.scheme,
-    payTo: requirement.payTo.toLowerCase(),
-    resource: requirement.resource,
-    method: requirement.method,
+    amount: paymentRequired.accepts[0]?.amount ?? costUsdt.toString(),
+    currency: network.token.symbol,
+    network: getX402Network(),
+    scheme: 'exact',
+    payTo: network.treasuryAddress.toLowerCase(),
+    resource: new URL(request.url).pathname,
+    method: request.method.toUpperCase(),
     requestHash: requestHash ?? '',
-    requirement: JSON.stringify(requirement),
+    requirement: JSON.stringify(paymentRequired),
     createdAt: now,
     expiresAt: now + PAYMENT_INTENT_TTL_MS,
   });
 
-  logger.payment('intent_created', { paymentId, tier, amount: requirement.amount, currency: requirement.currency, network: requirement.network });
+  logger.payment('intent_created', {
+    paymentId,
+    tier,
+    amount: paymentRequired.accepts[0]?.amount ?? costUsdt.toString(),
+    currency: network.token.symbol,
+    network: getX402Network(),
+    scheme: 'exact',
+  });
 
-  return requirement;
+  return paymentRequired;
 }
 
 async function getPaymentIntent(paymentId: string) {
@@ -200,158 +148,155 @@ async function getPaymentIntent(paymentId: string) {
   return payment ?? null;
 }
 
-function intentMatchesRequest(
-  intent: NonNullable<Awaited<ReturnType<typeof getPaymentIntent>>>,
-  request: Request,
-  costUsdt: number,
-  tier: string,
-  requestHash?: string,
-): boolean {
-  const network = getActivePaymentNetwork();
-  return intent.tier === tier
-    && intent.amount === costUsdt.toString()
-    && intent.network === network.name
-    && intent.resource === new URL(request.url).pathname
-    && intent.method === request.method.toUpperCase()
-    && intent.requestHash === (requestHash ?? '');
-}
+// ─── x402 Standard Payment Service ──────────────────────────────────────────
 
-async function isReplay(txHash: string): Promise<boolean> {
-  const [existing] = await db
-    .select({ txHash: usedPaymentTransactions.txHash })
-    .from(usedPaymentTransactions)
-    .where(eq(usedPaymentTransactions.txHash, txHash.toLowerCase()))
-    .limit(1);
-
-  return Boolean(existing);
-}
-
-async function recordUsedTransaction(
-  verification: PaymentVerificationSuccess,
-  tier: string,
-  paymentId: string,
-  requestHash?: string,
-) {
-  await db.insert(usedPaymentTransactions).values({
-    txHash: verification.txHash.toLowerCase(),
-    network: getActivePaymentNetwork().name,
-    chainId: verification.chainId,
-    tokenAddress: verification.tokenAddress.toLowerCase(),
-    treasuryAddress: verification.recipient.toLowerCase(),
-    payer: verification.payer.toLowerCase(),
-    amount: verification.amount.toString(),
-    tier,
-    paymentId,
-    requestHash: requestHash ?? null,
-    createdAt: Date.now(),
-  });
-}
-
-export class SelfHostedWeb3PaymentService implements PaymentService {
+export class X402PaymentService implements PaymentService {
   async validatePayment({ request, costUsdt, tier, requestHash }: PaymentRequest): Promise<PaymentResult> {
-    const txHash = extractL402TxHash(request);
     const activeNetwork = getActivePaymentNetwork();
 
-    if (!txHash) {
-      let paymentRequired: Web3PaymentRequirement;
+    // Step 1: Check if the request carries a payment signature
+    const paymentPayload = extractPaymentPayload(request);
+
+    if (!paymentPayload) {
+      // No payment — create a challenge and return 402
+      let paymentRequired: X402PaymentRequired;
       try {
         paymentRequired = await createPaymentIntent(request, costUsdt, tier, requestHash);
       } catch (error) {
-        return failure(503, 'Service Unavailable', error instanceof Error ? error.message : 'Payment network configuration is incomplete.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
-      }
-
-      return failure(402, 'Payment Required', `x402 payment required. Transfer ${costUsdt} ${activeNetwork.token.symbol} and retry with the payment id from this challenge.`, tier, `${costUsdt} ${activeNetwork.token.symbol}`, paymentRequired);
-    }
-
-    const paymentId = extractPaymentId(request);
-    if (!paymentId) {
-      return failure(401, 'Unauthorized', 'A valid X-WatchTower-Payment-Id is required with a payment transaction hash.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
-    }
-
-    const intent = await getPaymentIntent(paymentId);
-    if (!intent || !intentMatchesRequest(intent, request, costUsdt, tier, requestHash)) {
-      return failure(401, 'Unauthorized', 'Payment intent does not match this request.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
-    }
-    if (intent.status === 'pending' && intent.expiresAt < Date.now()) {
-      return failure(409, 'Conflict', 'Payment intent has expired. Request a new payment challenge before settling.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
-    }
-    if (intent.settlementTxHash) {
-      if (intent.settlementTxHash.toLowerCase() !== txHash.toLowerCase() || !intent.payer) {
-        return failure(409, 'Conflict', 'Payment intent has already been settled with a different transaction.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
-      }
-      return {
-        ok: true,
-        receipt: {
-          mode: 'self-hosted-web3-verification',
+        return failure(
+          503,
+          'Service Unavailable',
+          error instanceof Error ? error.message : 'Payment network configuration is incomplete.',
           tier,
-          amountUsdt: costUsdt,
-          currency: activeNetwork.token.symbol,
-          network: activeNetwork.name,
-          chainId: getRequiredPaymentNetwork().chainId,
-          payer: intent.payer,
-          settlementTxHash: intent.settlementTxHash,
-          paymentId,
-          requestHash,
-        },
-      };
+          `${costUsdt} ${activeNetwork.token.symbol}`,
+        );
+      }
+
+      return failure(
+        402,
+        'Payment Required',
+        `x402 payment required. Sign a payment of ${costUsdt} ${activeNetwork.token.symbol} using the exact scheme and retry with the PAYMENT-SIGNATURE header.`,
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+        paymentRequired,
+      );
     }
 
-    if (await isReplay(txHash)) {
-      return failure(409, 'Conflict', 'Payment transaction hash has already been used for another request.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
+    // Step 2: We have a payment payload — extract the accepted requirements
+    const paymentRequirements = paymentPayload.accepted;
+    if (!paymentRequirements) {
+      return failure(
+        401,
+        'Unauthorized',
+        'Invalid payment payload: missing accepted payment requirements.',
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
     }
 
-    const verification = await verifyPaymentTransaction({
-      txHash,
-      requiredAmount: costUsdt.toString(),
-    }).catch((error: unknown) => ({
-      ok: false as const,
-      reason: error instanceof Error ? error.message : 'Payment verification failed.',
-    }));
-
-    if (!verification.ok) {
-      logger.payment('verification_failed', { paymentId, txHash, reason: verification.reason, tier });
-      return failure(401, 'Unauthorized', verification.reason, tier, `${costUsdt} ${activeNetwork.token.symbol}`);
+    // Step 3: Verify the payment payload matches a known intent.
+    // In x402, the paymentPayload carries the full accepted requirements so we
+    // can match against what we asked for. We verify amount/payTo/network/scheme.
+    const network = getX402Network();
+    if (paymentRequirements.network !== network) {
+      return failure(
+        401,
+        'Unauthorized',
+        `Payment network mismatch. Expected ${network}, got ${paymentRequirements.network}.`,
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
     }
 
+    if (paymentRequirements.scheme !== 'exact') {
+      return failure(
+        401,
+        'Unauthorized',
+        `Unsupported payment scheme: ${paymentRequirements.scheme}. Only "exact" is supported.`,
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
+    }
+
+    // Step 4: Verify and settle via the OKX facilitator
+    const settlement = await verifyAndSettle(paymentPayload, paymentRequirements);
+
+    if (!settlement.ok) {
+      logger.payment('verification_failed', {
+        tier,
+        reason: settlement.reason,
+        statusCode: settlement.statusCode,
+      });
+      return failure(
+        settlement.statusCode as PaymentFailure['status'],
+        settlement.statusCode === 402 ? 'Payment Required' : 'Unauthorized',
+        settlement.reason,
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
+    }
+
+    // Step 5: Record the settlement in our database
+    const paymentId = crypto.randomUUID();
     try {
-      await recordUsedTransaction(verification, tier, paymentId, requestHash);
-      await db.update(payments)
-        .set({
-          status: 'settled',
-          payer: verification.payer.toLowerCase(),
-          settlementTxHash: verification.txHash.toLowerCase(),
-          settledAt: Date.now(),
-        })
-        .where(eq(payments.paymentId, paymentId));
-    } catch {
-      return failure(409, 'Conflict', 'Payment transaction hash has already been used.', tier, `${costUsdt} ${activeNetwork.token.symbol}`);
+      await db.insert(payments).values({
+        paymentId,
+        status: 'settled',
+        tier,
+        amount: settlement.amount,
+        currency: activeNetwork.token.symbol,
+        network: settlement.network,
+        scheme: 'exact',
+        payer: settlement.payer.toLowerCase(),
+        payTo: paymentRequirements.payTo.toLowerCase(),
+        resource: new URL(request.url).pathname,
+        method: request.method.toUpperCase(),
+        requestHash: requestHash ?? '',
+        requirement: JSON.stringify(paymentRequirements),
+        paymentPayload: JSON.stringify(paymentPayload),
+        settlementTxHash: settlement.transaction,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + PAYMENT_INTENT_TTL_MS,
+        settledAt: Date.now(),
+      });
+    } catch (error) {
+      // If insert fails (e.g. duplicate), the payment was likely already processed
+      logger.payment('settlement_db_error', {
+        error: error instanceof Error ? error.message : String(error),
+        tx: settlement.transaction,
+      });
     }
+
+    logger.payment('settled', {
+      paymentId,
+      tier,
+      amount: settlement.amount,
+      currency: activeNetwork.token.symbol,
+      txHash: settlement.transaction,
+      payer: settlement.payer,
+    });
 
     return {
       ok: true,
-      receipt: (() => {
-        const receipt = {
-          mode: 'self-hosted-web3-verification' as const,
-          tier,
-          amountUsdt: costUsdt,
-          currency: activeNetwork.token.symbol,
-          network: activeNetwork.name,
-          chainId: verification.chainId,
-          payer: verification.payer,
-          settlementTxHash: verification.txHash,
-          paymentId,
-          requestHash,
-        };
-        logger.payment('settled', { paymentId, tier, amount: costUsdt.toString(), currency: activeNetwork.token.symbol, txHash: verification.txHash, payer: verification.payer });
-        return receipt;
-      })(),
+      receipt: {
+        mode: 'x402-facilitator',
+        tier,
+        amountUsdt: costUsdt,
+        currency: activeNetwork.token.symbol,
+        network: settlement.network,
+        chainId: getRequiredPaymentNetwork().chainId,
+        payer: settlement.payer,
+        settlementTxHash: settlement.transaction,
+        paymentId,
+        requestHash,
+      },
     };
   }
 }
 
 // ─── Demo Mode ────────────────────────────────────────────────────────────────
 // When WATCHTOWER_DEMO_MODE=true, the payment middleware simulates a successful
-// L402 authorization. The full request path is exercised (validation, chain
+// x402 authorization. The full request path is exercised (validation, chain
 // resolution, MCP server, scan engine) — only the blockchain payment is skipped.
 // Production behavior is completely unchanged when the flag is absent or false.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -367,7 +312,7 @@ class DemoPaymentService implements PaymentService {
     logger.payment('demo_bypass', {
       tier,
       amount: costUsdt.toString(),
-      note: 'WATCHTOWER_DEMO_MODE active — simulating successful L402 authorization',
+      note: 'WATCHTOWER_DEMO_MODE active — simulating successful x402 authorization',
     });
 
     return {
@@ -388,7 +333,7 @@ class DemoPaymentService implements PaymentService {
   }
 }
 
-const realPaymentService = new SelfHostedWeb3PaymentService();
+const realPaymentService = new X402PaymentService();
 const demoPaymentService = new DemoPaymentService();
 
 // Default export for backward compatibility — always the real service.
@@ -461,8 +406,8 @@ export async function releasePaymentProcessing(paymentId: string, reason: string
 export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
   const headers: Record<string, string> = {};
   if (failure.paymentRequired) {
-    headers[PAYMENT_REQUIRED_HEADER] = encodeBase64Json(failure.paymentRequired);
-    headers['WWW-Authenticate'] = `L402 realm="WatchTower", network="${failure.paymentRequired.network}", chainId="${failure.paymentRequired.chainId}", token="${failure.paymentRequired.tokenAddress}", amount="${failure.paymentRequired.amount}"`;
+    // Standard x402 v2 headers
+    headers[PAYMENT_REQUIRED_HEADER] = encodePaymentRequired(failure.paymentRequired);
   }
 
   return NextResponse.json(
@@ -481,20 +426,26 @@ export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
 }
 
 export function paymentResponseHeader(receipt: PaymentReceipt): string {
-  return encodeBase64Json({
-    x402Version: 2,
-    scheme: 'evm-erc20-transfer',
-    network: receipt.network,
-    chainId: receipt.chainId,
-    currency: receipt.currency,
-    amount: receipt.amountUsdt.toString(),
+  // For demo receipts, return a simple base64 JSON (not from the SDK)
+  if (receipt.mode === 'demo') {
+    return Buffer.from(JSON.stringify({
+      x402Version: 2,
+      success: true,
+      status: 'success',
+      payer: receipt.payer,
+      transaction: receipt.settlementTxHash,
+      network: `eip155:${receipt.chainId}`,
+    }), 'utf8').toString('base64url');
+  }
+
+  // For real payments, encode the settle response via the SDK
+  return encodePaymentResponse({
+    success: true,
+    status: 'success',
     payer: receipt.payer,
-    settlementTxHash: receipt.settlementTxHash,
-    paymentId: receipt.paymentId,
-    requestHash: receipt.requestHash,
-    status: 'verified',
-    verifiedAt: Date.now(),
-  });
+    transaction: receipt.settlementTxHash,
+    network: `eip155:${receipt.chainId}`,
+  } as SettleResponse);
 }
 
 export function setPaymentResponseHeader(response: Response, receipt: PaymentReceipt): Response {

@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       tier: 'firewall',
       input,
     });
-    const payment = await requirePayment(req, SCAN_PRICING_USDT.firewall, 'Tier 2 - API Firewall', requestHash);
+    const payment = await requirePayment(req, SCAN_PRICING_USDT.firewall, 'Tier 2 - API Firewall', requestHash, { allowDemoBypass: true });
     if (!payment.ok) return paymentRequiredResponse(payment.failure);
 
     // Claim payment processing — skip DB operations for demo receipts

@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       tier: 'deep',
       input,
     });
-    const payment = await requirePayment(req, SCAN_PRICING_USDT.deep, 'Tier 1 - Deep Scan', requestHash);
+    const payment = await requirePayment(req, SCAN_PRICING_USDT.deep, 'Tier 1 - Deep Scan', requestHash, { allowDemoBypass: true });
     if (!payment.ok) return paymentRequiredResponse(payment.failure);
 
     // Claim payment processing — skip DB operations for demo receipts
