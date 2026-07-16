@@ -81,17 +81,22 @@ export async function getResourceServer(): Promise<x402ResourceServer> {
     // the supported kind for exact/eip155:196. The promise is cached so
     // concurrent requests share the same initialization.
     _initPromise = server.initialize().catch((err) => {
+      const causeMsg = err instanceof Error && err.cause 
+          ? (err.cause as Error).message ?? String(err.cause)
+          : undefined;
+
       // Log the root cause (auth failure, network error, etc.) for diagnostics
       logger.payment('x402_init_failed', {
         error: err instanceof Error ? err.message : String(err),
-        cause: err instanceof Error && err.cause
-          ? (err.cause as Error).message ?? String(err.cause)
-          : undefined,
+        cause: causeMsg,
       });
+
       // Reset so the next request retries rather than permanently failing
       _resourceServer = null;
       _initPromise = null;
-      throw err;
+      
+      // Throw a new error with the detailed cause attached so it surfaces to the HTTP response
+      throw new Error(`x402 init failed: ${err.message}. Cause: ${causeMsg || 'unknown'}`);
     });
   }
   await _initPromise;
