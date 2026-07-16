@@ -29,9 +29,10 @@ export async function GET() {
       status: res.status,
       body: text,
       keys_present: {
-        key: !!apiKey,
-        secret: !!secretKey,
-        pass: !!passphrase
+        key_len: apiKey.length,
+        secret_len: secretKey.length,
+        pass_len: passphrase.length,
+        pass_last_char: passphrase.slice(-1)
       }
     });
   } catch (err: any) {
