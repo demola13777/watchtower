@@ -63,8 +63,9 @@ export function getFacilitatorClient(): OKXFacilitatorClient {
 // ─── x402 Resource Server ────────────────────────────────────────────────────
 
 let _resourceServer: x402ResourceServer | null = null;
+let _initPromise: Promise<void> | null = null;
 
-export function getResourceServer(): x402ResourceServer {
+export async function getResourceServer(): Promise<x402ResourceServer> {
   if (!_resourceServer) {
     const facilitator = getFacilitatorClient();
     const server = new x402ResourceServer(facilitator);
@@ -74,7 +75,14 @@ export function getResourceServer(): x402ResourceServer {
     registerExactEvmScheme(server);
 
     _resourceServer = server;
+
+    // initialize() fetches the facilitator's supported kinds (schemes + networks).
+    // Without this, buildPaymentRequirements() throws because it cannot find
+    // the supported kind for exact/eip155:196. The promise is cached so
+    // concurrent requests share the same initialization.
+    _initPromise = server.initialize();
   }
+  await _initPromise;
   return _resourceServer;
 }
 
@@ -106,7 +114,7 @@ export async function buildPaymentRequired(
 ): Promise<PaymentRequired> {
   const network = getX402Network();
   const paymentNetwork = getRequiredPaymentNetwork();
-  const server = getResourceServer();
+  const server = await getResourceServer();
   const url = new URL(request.url);
 
   // Build the payment requirements through the SDK's scheme system.
