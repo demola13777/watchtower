@@ -80,10 +80,22 @@ export async function getResourceServer(): Promise<x402ResourceServer> {
     // Without this, buildPaymentRequirements() throws because it cannot find
     // the supported kind for exact/eip155:196. The promise is cached so
     // concurrent requests share the same initialization.
-    _initPromise = server.initialize();
+    _initPromise = server.initialize().catch((err) => {
+      // Log the root cause (auth failure, network error, etc.) for diagnostics
+      logger.payment('x402_init_failed', {
+        error: err instanceof Error ? err.message : String(err),
+        cause: err instanceof Error && err.cause
+          ? (err.cause as Error).message ?? String(err.cause)
+          : undefined,
+      });
+      // Reset so the next request retries rather than permanently failing
+      _resourceServer = null;
+      _initPromise = null;
+      throw err;
+    });
   }
   await _initPromise;
-  return _resourceServer;
+  return _resourceServer!;
 }
 
 // ─── Network Helper ──────────────────────────────────────────────────────────
