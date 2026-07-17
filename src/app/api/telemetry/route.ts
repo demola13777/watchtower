@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { scans, payments } from '@/lib/db/schema';
+import { scans, payments, usedPaymentTransactions } from '@/lib/db/schema';
 import { desc, eq, count, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
@@ -33,8 +33,13 @@ export async function GET(req: Request) {
       value: sql<number>`COUNT(DISTINCT LOWER(${scans.agentWallet}))`,
     }).from(scans).where(sql`${scans.agentWallet} IS NOT NULL`);
     const settledRevenuePromise = db.select({
-      value: sql<number>`COALESCE(SUM(CASE WHEN ${payments.status} IN ('settled', 'processing', 'completed') THEN CAST(${payments.amount} AS REAL) ELSE 0 END), 0)`,
-    }).from(payments);
+      value: sql<number>`COALESCE(SUM(
+        CASE 
+          WHEN ${usedPaymentTransactions.network} = 'X Layer Mainnet' THEN CAST(${usedPaymentTransactions.amount} AS REAL) / 1000000.0
+          ELSE CAST(${usedPaymentTransactions.amount} AS REAL) / 1000000000000000000.0
+        END
+      ), 0)`,
+    }).from(usedPaymentTransactions);
     const leaderboardPromise = db.select({
       agentWallet: sql<string>`LOWER(${scans.agentWallet})`.as('agent_wallet'),
       totalScans: count().as('total_scans'),

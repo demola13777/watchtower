@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Shield, ShieldAlert, Activity, Zap, Hexagon, Server, Database, Search, Fingerprint, Users, MessageCircle, ExternalLink, Loader2, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 
 // Module animation stages
@@ -212,9 +213,7 @@ export default function NetworkDashboard() {
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Link href="/" className="flex items-center gap-2 group">
-              <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] transition-all">
-                <Hexagon className="h-5 w-5 text-white" />
-              </div>
+              <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.5)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] transition-all" />
               <span className="text-xl font-bold text-white">WatchTower</span>
             </Link>
             <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-widest">
@@ -469,8 +468,8 @@ export default function NetworkDashboard() {
 
                    <div className="md:col-span-1">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Tier</div>
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${scan.tier === 'deep' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : scan.agentWallet === 'web_dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-500'}`}>
-                        {scan.tier === 'deep' ? 'Deep' : scan.agentWallet === 'web_dashboard' ? 'Free' : 'API'}
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${scan.agentWallet === 'web_dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : scan.tier === 'deep' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
+                        {scan.agentWallet === 'web_dashboard' ? 'Free' : scan.tier === 'deep' ? 'Deep' : 'API'}
                       </span>
                    </div>
                    

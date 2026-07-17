@@ -4,6 +4,7 @@ import { REGISTRY_CHAIN_ID } from '@/lib/config';
 import { eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import Image from 'next/image';
 import { Shield, ShieldAlert, Activity, Zap, Hexagon, Fingerprint, Users, MessageCircle, Target, CheckCircle, ExternalLink } from "lucide-react";
 
 // M3: Pre-defined complete Tailwind class names (no dynamic interpolation)
@@ -125,9 +126,7 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
       <nav className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-md flex-none shadow-lg transform-gpu">
         <div className="max-w-[1400px] w-full mx-auto px-4 py-2 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-2">
-            <div className="relative flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_10px_rgba(6,182,212,0.5)]">
-              <Hexagon className="h-3 w-3 text-white" />
-            </div>
+            <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={24} height={24} className="rounded shadow-[0_0_10px_rgba(6,182,212,0.5)]" />
             <span className="text-lg font-black text-white tracking-wide">WatchTower</span>
           </div>
           <div className="flex items-center gap-2">
