@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Shield, ShieldAlert, Activity, Zap, Hexagon, Server, Database, Search, Fingerprint, Users, MessageCircle, ExternalLink, Loader2, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { AgentRelayPanel } from "@/components/agent-relay-panel";
 
 
 // Module animation stages
@@ -131,6 +132,7 @@ export default function NetworkDashboard() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanError, setScanError] = useState('');
   const [activeModule, setActiveModule] = useState(-1); // For animated progress
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   const fetchTelemetry = useCallback(async () => {
     try {
@@ -251,6 +253,8 @@ export default function NetworkDashboard() {
               type="text"
               value={scanAddress}
               onChange={(e) => { setScanAddress(e.target.value.trim()); setScanError(''); }}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
               placeholder="0x... (e.g. 0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D)"
               className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:shadow-[0_0_20px_rgba(6,182,212,0.2)] transition-all"
               disabled={scanning}
@@ -270,6 +274,10 @@ export default function NetworkDashboard() {
             <div className="mt-3 text-sm text-rose-400 bg-rose-500/5 border border-rose-500/20 rounded-lg px-4 py-2">
               {scanError}
             </div>
+          )}
+
+          {(isInputFocused || scanAddress.length >= 40) && !scanning && !scanResult && (
+            <AgentRelayPanel />
           )}
 
 

@@ -312,7 +312,7 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
                 ) : (
                   <Shield className="h-3.5 w-3.5" />
                 )}
-                <span className="tracking-wide font-semibold">{hasOnChainProof ? 'Verified On-Chain Attestation' : 'Off-Chain Hash (Blockchain pending)'}</span>
+                <span className="tracking-wide font-semibold">{hasOnChainProof ? 'Verified On-Chain Attestation' : 'Onchain Attestation: Offline'}</span>
               </div>
               {hasOnChainProof ? (
                 <a 
