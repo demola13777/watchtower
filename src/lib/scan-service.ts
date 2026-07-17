@@ -140,16 +140,23 @@ export async function runDeepScan(input: {
   chainId?: string;
   agentWallet?: string;
   chainResolution?: ChainResolution;
+  skipAttestation?: boolean;
 }): Promise<DeepScanReport> {
   const chainResolution = input.chainResolution ?? await resolveScanChain(input);
   const chainId = chainResolution.chainId;
   const agentWallet = input.agentWallet?.toLowerCase() ?? null;
   const report = await analyzeToken(input.tokenAddress, chainId);
-  const txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
-  if (!txHash) {
-    logger.error('Deep scan on-chain attestation failed — returning report without attestation', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
+
+  let txHash: string | null = null;
+  if (input.skipAttestation) {
+    logger.scan('deep_scan_attestation_skipped', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
   } else {
-    logger.registry('deep_scan_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
+    txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
+    if (!txHash) {
+      logger.error('Deep scan on-chain attestation failed — returning report without attestation', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
+    } else {
+      logger.registry('deep_scan_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
+    }
   }
 
   const deepReport: DeepScanReport = {

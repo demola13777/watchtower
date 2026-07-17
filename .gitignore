@@ -49,3 +49,6 @@ dev-server*.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+watchtower-launch/out/
+watchtower-launch/build/
+tmp_pkg/

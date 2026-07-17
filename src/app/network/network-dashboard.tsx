@@ -3,30 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Shield, ShieldAlert, Activity, Zap, Hexagon, Server, Database, Search, Fingerprint, Users, MessageCircle, ExternalLink, Loader2, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { AgentRelayPanel } from "@/components/agent-relay-panel";
 
-const erc20TransferAbi = [
-  {
-    type: 'function',
-    name: 'transfer',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-] as const;
-
-const erc20BalanceAbi = [
-  {
-    type: 'function',
-    name: 'balanceOf',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const;
 
 // Module animation stages
 const SCAN_MODULES = [
@@ -36,176 +13,6 @@ const SCAN_MODULES = [
   { name: 'Social Threat Radar', icon: 'message', color: 'text-emerald-400', bgColor: 'bg-emerald-400' },
 ];
 
-interface Web3PaymentRequirement {
-  x402Version: number;
-  scheme: string;
-  network: string;
-  chainId: number;
-  currency: string;
-  tokenAddress: string;
-  tokenDecimals: number;
-  amount: string;
-  payTo: string;
-  resource: string;
-  method: string;
-  tier: string;
-  paymentId?: string;
-  minConfirmations?: number;
-  instructions: string;
-}
-
-type EthereumProvider = {
-  request<T = unknown>(args: { method: string; params?: unknown[] }): Promise<T>;
-};
-
-declare global {
-  interface Window {
-    ethereum?: EthereumProvider;
-  }
-}
-
-function decodeBase64Json<T>(value: string): T | null {
-  try {
-    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '=');
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as T;
-  } catch {
-    return null;
-  }
-}
-
-function isConfirmationDepthError(message?: string): boolean {
-  return Boolean(message?.match(/confirmation\(s\).+required/i));
-}
-
-function getChainMetadata(requirement: Web3PaymentRequirement) {
-  const isTestnet = requirement.chainId === 1952;
-  return {
-    chainId: `0x${requirement.chainId.toString(16)}`,
-    chainName: requirement.network || (isTestnet ? 'X Layer Testnet' : 'X Layer Mainnet'),
-    nativeCurrency: { name: 'OKB', symbol: 'OKB', decimals: 18 },
-    rpcUrls: [isTestnet ? 'https://testrpc.xlayer.tech' : 'https://rpc.xlayer.tech'],
-    blockExplorerUrls: [isTestnet ? 'https://www.oklink.com/xlayer-test' : 'https://www.oklink.com/xlayer'],
-  };
-}
-
-async function ensureWalletChain(provider: EthereumProvider, requirement: Web3PaymentRequirement) {
-  const chain = getChainMetadata(requirement);
-  const currentChainId = await provider.request<string>({ method: 'eth_chainId' }).catch(() => null);
-  if (currentChainId?.toLowerCase() === chain.chainId.toLowerCase()) return;
-
-  try {
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: chain.chainId }],
-    });
-  } catch (error: unknown) {
-    const code = typeof error === 'object' && error !== null && 'code' in error
-      ? Number((error as { code: unknown }).code)
-      : undefined;
-    if (code !== 4902) throw error;
-    await provider.request({
-      method: 'wallet_addEthereumChain',
-      params: [chain],
-    });
-  }
-}
-
-async function waitForWalletReceipt(
-  provider: EthereumProvider,
-  txHash: string,
-  minConfirmations = 1,
-  onProgress?: (message: string) => void,
-) {
-  const startedAt = Date.now();
-  const requiredConfirmations = Math.max(1, Math.floor(minConfirmations));
-  const timeoutMs = 180_000;
-
-  while (Date.now() - startedAt < timeoutMs) {
-    const receipt = await provider.request<{ status?: string; blockNumber?: string } | null>({
-      method: 'eth_getTransactionReceipt',
-      params: [txHash],
-    }).catch(() => null);
-
-    if (receipt?.status === '0x0') {
-      throw new Error('Wallet payment transaction failed on-chain.');
-    }
-    if (receipt?.status === '0x1' && receipt.blockNumber) {
-      const currentBlockHex = await provider.request<string>({ method: 'eth_blockNumber' }).catch(() => null);
-      if (currentBlockHex) {
-        const minedBlock = BigInt(receipt.blockNumber);
-        const currentBlock = BigInt(currentBlockHex);
-        const confirmations = currentBlock >= minedBlock ? Number(currentBlock - minedBlock + BigInt(1)) : 0;
-        if (confirmations >= requiredConfirmations) return;
-        onProgress?.(`Payment confirmed on-chain. Waiting for ${requiredConfirmations - confirmations} more confirmation(s)...`);
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-  }
-  throw new Error('Wallet payment was submitted, but confirmation timed out. Please try again once the transaction has enough confirmations.');
-}
-
-async function settlePaymentWithWallet(
-  requirement: Web3PaymentRequirement,
-  onProgress?: (message: string) => void,
-): Promise<string> {
-  const provider = window.ethereum;
-  if (!provider) {
-    throw new Error('No EVM wallet detected. Open this page in a browser with MetaMask, OKX Wallet, or another EVM wallet.');
-  }
-
-  const [account] = await provider.request<string[]>({ method: 'eth_requestAccounts' });
-  if (!account) throw new Error('No wallet account selected.');
-
-  await ensureWalletChain(provider, requirement);
-
-  const { encodeFunctionData, formatUnits, parseUnits } = await import('viem');
-  const amount = parseUnits(requirement.amount, requirement.tokenDecimals);
-  const balanceCallData = encodeFunctionData({
-    abi: erc20BalanceAbi,
-    functionName: 'balanceOf',
-    args: [account as `0x${string}`],
-  });
-  const [tokenBalanceHex, nativeBalanceHex] = await Promise.all([
-    provider.request<string>({
-      method: 'eth_call',
-      params: [{ to: requirement.tokenAddress, data: balanceCallData }, 'latest'],
-    }),
-    provider.request<string>({ method: 'eth_getBalance', params: [account, 'latest'] }),
-  ]);
-
-  const tokenBalance = BigInt(tokenBalanceHex);
-  if (tokenBalance < amount) {
-    throw new Error(
-      `Selected wallet has ${formatUnits(tokenBalance, requirement.tokenDecimals)} ${requirement.currency}, but ${requirement.amount} ${requirement.currency} is required.`,
-    );
-  }
-  if (BigInt(nativeBalanceHex) === BigInt(0)) {
-    throw new Error('Selected wallet has no OKB for the X Layer network fee. Add a small amount of native gas and try again.');
-  }
-
-  const data = encodeFunctionData({
-    abi: erc20TransferAbi,
-    functionName: 'transfer',
-    args: [requirement.payTo as `0x${string}`, amount],
-  });
-
-  const txHash = await provider.request<string>({
-    method: 'eth_sendTransaction',
-    params: [{
-      from: account,
-      to: requirement.tokenAddress,
-      data,
-      value: '0x0',
-    }],
-  });
-
-  onProgress?.('Payment submitted. Waiting for on-chain confirmation...');
-  await waitForWalletReceipt(provider, txHash, requirement.minConfirmations, onProgress);
-  return txHash;
-}
 
 async function validateChecksummedEvmAddress(value: string): Promise<{ ok: true; address: string } | { ok: false; message: string }> {
   const trimmed = value.trim();
@@ -317,9 +124,8 @@ export default function NetworkDashboard() {
   const [pageSize, setPageSize] = useState(10);
   const [now, setNow] = useState(() => Date.now());
   
-  // "Try It" scanner state
+  // Scanner state
   const [scanAddress, setScanAddress] = useState('');
-  const [paymentRequirement, setPaymentRequirement] = useState<Web3PaymentRequirement | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanError, setScanError] = useState('');
@@ -348,7 +154,7 @@ export default function NetworkDashboard() {
     };
   }, [fetchTelemetry]);
 
-  // "Try It" scanner handler
+  // Scanner handler — free dashboard scans, no payment required
   const handleScan = async () => {
     const addressValidation = await validateChecksummedEvmAddress(scanAddress);
     if (!addressValidation.ok) {
@@ -370,33 +176,13 @@ export default function NetworkDashboard() {
     }, 1200);
 
     try {
-      const payload = JSON.stringify({
-        tokenAddress: addressValidation.address,
-        agentWallet: '0x000000000000000000000000000000000000dA5b',
-      });
-
-      const submitDeepScan = () => fetch('/api/scan/deep', {
+      const res = await fetch('/api/scan/dashboard', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: payload,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenAddress: addressValidation.address }),
       });
 
-
-
-      let res = await submitDeepScan();
-      let data: { success?: boolean; message?: string; error?: string; data?: unknown } | null = null;
-
-      if (res.status === 402) {
-        // The x402 payment protocol is designed for agent-to-agent payments.
-        // Dashboard users should enable WATCHTOWER_DEMO_MODE for web-based scans.
-        throw new Error(
-          'Payment required. Dashboard deep scans require WATCHTOWER_DEMO_MODE=true in your environment, ' +
-          'or use an agent client that supports the x402 payment protocol.'
-        );
-      }
-      data ??= await res.json();
+      const data: { success?: boolean; message?: string; error?: string; data?: unknown } | null = await res.json();
       clearInterval(moduleTimer);
       setActiveModule(4); // All complete
 
@@ -410,13 +196,8 @@ export default function NetworkDashboard() {
       }
     } catch (error) {
       clearInterval(moduleTimer);
-      const walletErrorCode = typeof error === 'object' && error !== null && 'code' in error
-        ? Number((error as { code: unknown }).code)
-        : undefined;
       setScanError(
-        walletErrorCode === 4001
-          ? 'Payment approval was cancelled in your wallet.'
-          : error instanceof Error ? error.message : 'Network error - is the server running?',
+        error instanceof Error ? error.message : 'Network error - is the server running?',
       );
     } finally {
       clearInterval(moduleTimer);
@@ -470,7 +251,7 @@ export default function NetworkDashboard() {
             <input
               type="text"
               value={scanAddress}
-              onChange={(e) => { setScanAddress(e.target.value.trim()); setScanError(''); setPaymentRequirement(null); }}
+              onChange={(e) => { setScanAddress(e.target.value.trim()); setScanError(''); }}
               placeholder="0x... (e.g. 0x2498a8fDa4F689c2A4a86767468Ff24dEab24e3D)"
               className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:shadow-[0_0_20px_rgba(6,182,212,0.2)] transition-all"
               disabled={scanning}
@@ -482,7 +263,7 @@ export default function NetworkDashboard() {
               className="w-full justify-center lg:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-sm hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
             >
               {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              {scanning ? 'Scanning...' : 'Try It'}
+              {scanning ? 'Scanning...' : 'Scan'}
             </button>
           </div>
 
@@ -492,9 +273,7 @@ export default function NetworkDashboard() {
             </div>
           )}
 
-          {scanAddress.length >= 40 && !scanning && !scanResult && (
-            <AgentRelayPanel requirement={paymentRequirement || undefined} />
-          )}
+
 
           {/* Animated Module Progress */}
           {scanning && (
@@ -690,9 +469,9 @@ export default function NetworkDashboard() {
 
                    <div className="md:col-span-1">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Tier</div>
-                     <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${scan.tier === 'deep' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
-                       {scan.tier === 'deep' ? 'Deep' : 'API'}
-                     </span>
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${scan.tier === 'deep' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : scan.agentWallet === 'web_dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-500'}`}>
+                        {scan.tier === 'deep' ? 'Deep' : scan.agentWallet === 'web_dashboard' ? 'Free' : 'API'}
+                      </span>
                    </div>
                    
                    <div className="md:col-span-1 md:text-right text-xs text-slate-500">
