@@ -26,7 +26,7 @@ export default function Home() {
       <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.5)]" />
+            <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg" />
             <span className="text-xl font-bold text-white">WatchTower</span>
           </div>
           <div className="flex items-center gap-4">
@@ -231,8 +231,13 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Section Divider */}
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/50 to-transparent" />
+        </div>
+
         {/* 4. Threat Modules Grid */}
-        <section className="max-w-7xl mx-auto px-4 py-24 border-t border-slate-800 bg-slate-900/20 backdrop-blur-sm animate-fade-in-up delay-400">
+        <section className="max-w-7xl mx-auto px-4 py-24 animate-fade-in-up delay-400">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-white mb-4">Multi-Layered Threat Detection</h2>
             <p className="text-slate-400 max-w-2xl mx-auto">Our engine runs four parallel analysis modules to build a comprehensive risk profile of any ERC-20 token in under a second.</p>
@@ -293,8 +298,13 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Section Divider */}
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/50 to-transparent" />
+        </div>
+
         {/* 5. Transparency & Receipts */}
-        <section className="border-t border-slate-800/50 bg-slate-950/40 backdrop-blur-sm py-24 animate-fade-in-up delay-500">
+        <section className="py-24 animate-fade-in-up delay-500">
           <div className="max-w-7xl mx-auto px-4 text-center">
             <h2 className="text-3xl font-bold text-white mb-6">Cryptographic Proof for Every Decision.</h2>
             <p className="text-slate-400 max-w-2xl mx-auto mb-10">
@@ -361,7 +371,7 @@ export default function Home() {
       <footer className="border-t border-slate-800 bg-slate-950 py-12">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Hexagon className="h-5 w-5 text-slate-500" />
+            <Image src="/watchtower_logo.png" alt="WatchTower" width={20} height={20} className="rounded opacity-50" />
             <span className="text-slate-500 font-medium">WatchTower Protocol</span>
           </div>
           <div className="flex items-center gap-6 text-sm font-medium text-slate-500">

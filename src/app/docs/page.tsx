@@ -77,7 +77,7 @@ export default function DocsPage() {
       <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 group">
-            <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.4)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.6)] transition-all" />
+            <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg transition-all" />
             <span className="text-xl font-bold text-white">WatchTower</span>
           </Link>
           <div className="flex items-center gap-5 text-sm font-medium">
