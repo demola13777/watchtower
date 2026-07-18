@@ -21,7 +21,7 @@
 
 1. Pause the affected payment route if replay, treasury, or token verification is suspect.
 2. Run `npm run reconcile:payments`.
-3. Compare database payment intent, used-hash record, token transfer receipt, and treasury balance.
+3. Compare database payment record, facilitator settlement transaction, compatibility settlement ledger, and treasury balance.
 4. Use the refund process in `PAYMENT_OPERATIONS.md` only after two-person review.
 
 ## Availability Failure

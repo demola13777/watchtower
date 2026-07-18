@@ -128,6 +128,7 @@ export async function buildPaymentRequired(
   request: Request,
   costUsdt: number,
   description?: string,
+  extra?: Record<string, unknown>,
 ): Promise<PaymentRequired> {
   const network = getX402Network();
   const paymentNetwork = getRequiredPaymentNetwork();
@@ -143,6 +144,7 @@ export async function buildPaymentRequired(
     price: costUsdt, // Money type — plain number
     network,
     maxTimeoutSeconds: 600, // 10 minutes
+    extra,
   });
 
   // Build the full PaymentRequired response with resource info
@@ -166,6 +168,7 @@ export interface X402VerifyAndSettleResult {
   network: string;
   amount: string;
   settleResponse: SettleResponse;
+  paymentId?: string;
 }
 
 export interface X402VerifyAndSettleFailure {
@@ -186,6 +189,9 @@ export type X402SettlementResult = X402VerifyAndSettleResult | X402VerifyAndSett
 export async function verifyAndSettle(
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
+  options?: {
+    beforeSettle?: (verified: { payer: string }) => Promise<X402VerifyAndSettleResult | null>;
+  },
 ): Promise<X402SettlementResult> {
   const facilitator = getFacilitatorClient();
 
@@ -215,6 +221,19 @@ export async function verifyAndSettle(
       reason: verifyResult.invalidMessage || verifyResult.invalidReason || 'Payment verification failed',
       statusCode: 401,
     };
+  }
+
+  const payer = verifyResult.payer ?? '0x0000000000000000000000000000000000000000';
+  const resumed = await options?.beforeSettle?.({ payer });
+  if (resumed) {
+    logger.payment('x402_settlement_reused', {
+      payer: resumed.payer,
+      tx: resumed.transaction,
+      network: resumed.network,
+      amount: resumed.amount,
+      paymentId: resumed.paymentId,
+    });
+    return resumed;
   }
 
   // Step 2: Settle the payment (execute the on-chain transfer via facilitator)
@@ -257,7 +276,7 @@ export async function verifyAndSettle(
 
   return {
     ok: true,
-    payer: settleResult.payer ?? verifyResult.payer ?? '0x0000000000000000000000000000000000000000',
+    payer: settleResult.payer ?? payer,
     transaction: settleResult.transaction,
     network: settleResult.network,
     amount: settleResult.amount ?? paymentRequirements.amount,

@@ -136,6 +136,18 @@ function ensureLocalSchema(sqlite: LocalSqliteDatabase) {
   if (!paymentColumns.has('completed_at')) {
     sqlite.prepare('ALTER TABLE payments ADD COLUMN completed_at integer').run();
   }
+  sqlite.prepare(`
+    CREATE UNIQUE INDEX IF NOT EXISTS payments_settlement_tx_hash_unique
+    ON payments (settlement_tx_hash)
+  `).run();
+  sqlite.prepare(`
+    CREATE INDEX IF NOT EXISTS payments_request_payer_status_idx
+    ON payments (request_hash, payer, status)
+  `).run();
+  sqlite.prepare(`
+    CREATE INDEX IF NOT EXISTS payments_status_expires_idx
+    ON payments (status, expires_at)
+  `).run();
 
   sqlite.prepare(`
     CREATE TABLE IF NOT EXISTS rate_limits (

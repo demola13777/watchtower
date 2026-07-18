@@ -123,6 +123,7 @@ const watchtower = new WatchTowerClient({
     apiOrigin: "https://your-watchtower-host",
     chainId: 196,
     tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
+    tokenDecimals: 6,
     treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS!,
     maxAmount: "1",
   },
@@ -140,7 +141,7 @@ try {
 }
 ```
 
-When an approved server returns a payment challenge, the SDK validates its pinned payment policy, settles the ERC-20 transfer from the agent runtime, waits for a successful receipt, and retries exactly once with the issued payment intent. A transaction hash is consumed for one request and is not retained for a later scan.
+When an approved server returns a payment challenge, the SDK validates its pinned payment policy, creates a signed x402 `PAYMENT-SIGNATURE`, and retries exactly once. WatchTower then asks the OKX facilitator to verify the signature and settle the transfer on-chain before running the scan.
 
 **Important:** `paymentPrivateKey` belongs only in a secure, server-side agent runtime. It must never be embedded in a browser bundle, supplied through a dashboard input, committed to the repository, or shared with a third party.
 
@@ -148,7 +149,7 @@ When an approved server returns a payment challenge, the SDK validates its pinne
 
 ## Machine-to-machine payment flow
 
-WatchTower implements a production-shaped, self-hosted x402-style payment boundary for X Layer. It does not claim to be a hosted facilitator. Instead, it verifies the actual ERC-20 transfer against the configured RPC and keeps the verification and settlement boundary isolated behind `PaymentService`. This ensures a standards-compliant facilitator or local verifier can replace it later without touching the scan engine.
+WatchTower implements a production-shaped x402 payment boundary for X Layer using the OKX facilitator. The server issues standard `PAYMENT-REQUIRED` challenges, accepts signed `PAYMENT-SIGNATURE` payloads, and keeps verification/settlement isolated behind `PaymentService` so scan routes, MCP tools, and reports do not know which payment backend is operating.
 
 ```mermaid
 sequenceDiagram
@@ -159,7 +160,7 @@ sequenceDiagram
 
     Agent->>API: POST /api/scan
     API-->>Agent: 402 + PAYMENT-REQUIRED
-    Agent->>Chain: Sign PaymentPayload for configured ERC-20
+    Agent->>Agent: Sign x402 PaymentPayload for configured ERC-20
     Agent->>API: Retry with PAYMENT-SIGNATURE header
     API->>Chain: OKX Facilitator verifies signature + settles transfer
     API->>DB: Record settlement
@@ -168,17 +169,15 @@ sequenceDiagram
 
 ### What is verified
 
-Before a protected request proceeds, the verifier checks:
+Before a protected request proceeds, the payment boundary checks:
 
-- the transaction was mined successfully;
-- it occurred on the configured network and chain ID;
-- it interacted with the configured ERC-20 contract;
-- an ERC-20 `Transfer` event sent funds to the configured treasury address;
-- the received amount meets or exceeds the tier price, using configured token decimals;
-- the transaction has the configured confirmation depth; and
-- the transaction hash has not already unlocked another request.
+- the signed payload uses the supported `exact` scheme;
+- the payload targets the configured x402 network;
+- the accepted requirement pays the configured treasury;
+- the accepted amount and asset match the tier challenge; and
+- the OKX facilitator reports successful on-chain settlement.
 
-Payment intents bind a 402 challenge to its endpoint, tier, and request body. Atomic intent claims and a used-transaction registry prevent replay and concurrent double-spend attempts. A failed deep-scan attestation does not masquerade as success: the intent remains retryable rather than returning a falsely anchored report.
+Payment records bind settlement to endpoint, tier, request hash, payer, and facilitator transaction. Atomic processing claims prevent concurrent retries from producing duplicate scan work, and completed response payloads let a retry return the already-paid result.
 
 ### Current pricing
 
@@ -256,7 +255,7 @@ curl -X POST https://watchtowr.xyz/api/scan \
   }'
 ```
 
-The first protected request receives `402 Payment Required` together with `PAYMENT-REQUIRED` and `X-WatchTower-Payment-Id` headers. After settlement, retry the same request with:
+The first protected request receives `402 Payment Required` together with a standard `PAYMENT-REQUIRED` challenge. Sign the accepted x402 requirement and retry the same request with:
 
 ```text
 PAYMENT-SIGNATURE: <base64-encoded-payment-payload>
@@ -275,7 +274,7 @@ Typical tools:
 
 ### Browser demonstration
 
-The Command Center is a visual demonstration of the agent flow. It can connect to a compatible injected EVM wallet such as MetaMask or OKX Wallet, preflight the configured X Layer Mainnet and balances, request a token transfer, wait for its receipt, and retry the scan. It never asks a user to type a private key.
+The Command Center is a visual demonstration of the agent flow. It runs free dashboard scans for humans and displays operational telemetry from the same scan and payment tables used by paid API/MCP traffic. It never asks a user to type a private key.
 
 ---
 
@@ -328,7 +327,7 @@ For an automated agent demo, configure a funded **server-side** agent wallet sep
 AGENT_PAYMENT_KEY=0xAgentRuntimeKey
 ```
 
-That wallet needs the configured payment token and enough native X Layer gas token for transfers. Keep all private keys in local or managed secret storage. `.env.local` is ignored by Git and must never be committed.
+That wallet needs the configured payment token and any approvals required by the x402 exact EVM method used by the facilitator. Keep all private keys in local or managed secret storage. `.env.local` is ignored by Git and must never be committed.
 
 ### Mainnet launch configuration
 
@@ -364,7 +363,7 @@ WatchTower is security infrastructure, so its own boundaries matter:
 - Request bodies use strict validation for EVM addresses and supported chain IDs.
 - Provider failures are visible and excluded from scoring rather than converted into invented values.
 - API and MCP requests share the same payment, validation, chain-resolution, and rate-limit boundaries.
-- Payment settlements are checked against the configured chain, token, treasury, amount, transaction success, confirmation depth, and one-time-use registry.
+- Payment payloads are pinned to the configured chain, token, treasury, and maximum amount before the SDK signs, then settled through the OKX facilitator before scan work begins.
 - Payment policy pinning prevents the SDK from automatically paying an arbitrary token, chain, recipient, amount, or API origin.
 - Deep-scan reports are only labeled onchain when the registry transaction is confirmed successfully.
 - Secrets remain server-side. No private-key entry field exists in the browser experience.

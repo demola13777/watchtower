@@ -1,28 +1,13 @@
+import type {
+  Network as X402Network,
+  PaymentRequired as X402PaymentRequired,
+  PaymentRequirements as X402PaymentRequirements,
+} from '@okxweb3/x402-core/types';
+
 const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
-const PAYMENT_ID_HEADER = 'X-WatchTower-Payment-Id';
-
-interface Web3PaymentRequirement {
-  x402Version: number;
-  scheme: 'evm-erc20-transfer';
-  network: string;
-  chainId: number;
-  currency: string;
-  tokenAddress: string;
-  tokenDecimals: number;
-  amount: string;
-  payTo: string;
-  resource: string;
-  method: string;
-  tier: string;
-  paymentId?: string;
-  requestHash?: string;
-  minConfirmations?: number;
-  instructions: string;
-}
-
-function isConfirmationDepthError(message?: string): boolean {
-  return Boolean(message?.match(/confirmation\(s\).+required/i));
-}
+const PAID_REPLAY_TIMEOUT_MS = 25_000;
+const PAID_REPLAY_MAX_DURATION_MS = 90_000;
+const PAID_REPLAY_MAX_ATTEMPTS = 6;
 
 export interface WatchTowerPaymentPolicy {
   /** Exact API origin that is allowed to request automatic settlement. */
@@ -31,6 +16,8 @@ export interface WatchTowerPaymentPolicy {
   chainId: number;
   /** Exact ERC-20 contract accepted for automatic settlement. */
   tokenAddress: string;
+  /** Payment token decimals used to compare maxAmount against atomic x402 requirements. Default: 6. */
+  tokenDecimals?: number;
   /** Exact WatchTower treasury address accepted for automatic settlement. */
   treasuryAddress: string;
   /** Per-request ceiling, expressed in the configured token's display units. */
@@ -42,6 +29,40 @@ function decodeBase64Json<T>(value: string): T | null {
     return JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as T;
   } catch {
     return null;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(response: Response, fallbackMs: number): number {
+  const header = response.headers.get('Retry-After');
+  if (!header) return fallbackMs;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 15_000);
+  const date = Date.parse(header);
+  if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 0), 15_000);
+  return fallbackMs;
+}
+
+function isRetryablePaidResponse(response: Response): boolean {
+  return response.status === 408
+    || response.status === 409
+    || response.status === 425
+    || response.status === 429
+    || response.status === 502
+    || response.status === 503
+    || response.status === 504;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -137,9 +158,7 @@ export interface WatchTowerConfig {
   threshold?: number;
   /** Optional default EVM chain id override. If omitted, WatchTower auto-detects the chain. */
   chainId?: string | number;
-  /** Optional settlement transaction hash to send as Authorization: L402 <tx_hash>. */
-  paymentTxHash?: string;
-  /** Optional agent payment private key. Enables automatic ERC-20 x402 settlement on 402 challenges. */
+  /** Optional agent payment private key. Enables automatic x402 PAYMENT-SIGNATURE creation on 402 challenges. */
   paymentPrivateKey?: `0x${string}` | string;
   /** Optional payment RPC override. Defaults to X Layer RPC for known WatchTower payment chains. */
   paymentRpcUrl?: string;
@@ -149,8 +168,7 @@ export interface WatchTowerConfig {
 
 export interface WatchTowerRequestOptions {
   chainId?: string | number;
-  paymentTxHash?: string;
-  paymentId?: string;
+  paymentSignature?: string;
 }
 
 export class WatchTowerAbortError extends Error {
@@ -170,14 +188,14 @@ export class WatchTowerAbortError extends Error {
 }
 
 export class WatchTowerPaymentRequiredError extends Error {
-  public requirement: Web3PaymentRequirement;
+  public paymentRequired: unknown;
 
-  constructor(requirement: Web3PaymentRequirement) {
+  constructor(paymentRequired: unknown) {
     super(
-      `WatchTower payment required: transfer ${requirement.amount} ${requirement.currency} to ${requirement.payTo} on chain ${requirement.chainId}, then retry with Authorization: L402 <tx_hash>.`,
+      'WatchTower payment required. Configure paymentPrivateKey and paymentPolicy to sign the x402 PAYMENT-SIGNATURE automatically, or create the signature externally and retry with paymentSignature.',
     );
     this.name = 'WatchTowerPaymentRequiredError';
-    this.requirement = requirement;
+    this.paymentRequired = paymentRequired;
   }
 }
 
@@ -193,7 +211,6 @@ export class WatchTowerClient {
   private agentWallet: string;
   private threshold: number;
   private chainId: string | undefined;
-  private paymentTxHash: string | undefined;
   private paymentPrivateKey: string | undefined;
   private paymentRpcUrl: string | undefined;
   private paymentPolicy: WatchTowerPaymentPolicy | undefined;
@@ -203,7 +220,6 @@ export class WatchTowerClient {
     this.agentWallet = config.agentWallet;
     this.threshold = config.threshold ?? 70;
     this.chainId = config.chainId === undefined ? undefined : String(config.chainId);
-    this.paymentTxHash = config.paymentTxHash;
     this.paymentPrivateKey = config.paymentPrivateKey;
     this.paymentRpcUrl = config.paymentRpcUrl;
     this.paymentPolicy = config.paymentPolicy;
@@ -233,7 +249,7 @@ export class WatchTowerClient {
     };
     if (options.chainId) payload.chainId = options.chainId;
 
-    const headers = this.createHeaders(options.paymentTxHash, options.paymentId);
+    const headers = this.createHeaders(options.paymentSignature);
 
     let res = await fetch(`${this.apiUrl}/api/scan`, {
       method: 'POST',
@@ -243,8 +259,8 @@ export class WatchTowerClient {
 
     if (res.status === 402) {
       const requirement = await this.readPaymentRequirement(res);
-      const txHash = await this.settlePayment(requirement);
-      res = await this.retryPaidRequest('/api/scan', payload, txHash, requirement.paymentId);
+      const paymentHeaders = await this.createPaymentSignatureHeaders(requirement);
+      res = await this.retryPaidRequest('/api/scan', payload, paymentHeaders);
     }
 
     if (!res.ok) {
@@ -257,10 +273,6 @@ export class WatchTowerClient {
       throw new Error(error || 'Failed to scan token');
     }
     const normalizedData = normalizeScanData(data);
-
-    // A settlement hash authorizes exactly one request. Never carry it into a
-    // later scan made by the same long-lived client instance.
-    this.paymentTxHash = undefined;
 
     // Configurable Kill Switch — use client-side threshold, not just server recommendation
     if (normalizedData.threatScore > this.threshold) {
@@ -296,7 +308,7 @@ export class WatchTowerClient {
     };
     if (options.chainId) payload.chainId = options.chainId;
 
-    const headers = this.createHeaders(options.paymentTxHash, options.paymentId);
+    const headers = this.createHeaders(options.paymentSignature);
 
     let res = await fetch(`${this.apiUrl}/api/scan/deep`, {
       method: 'POST',
@@ -306,8 +318,8 @@ export class WatchTowerClient {
 
     if (res.status === 402) {
       const requirement = await this.readPaymentRequirement(res);
-      const txHash = await this.settlePayment(requirement);
-      res = await this.retryPaidRequest('/api/scan/deep', payload, txHash, requirement.paymentId);
+      const paymentHeaders = await this.createPaymentSignatureHeaders(requirement);
+      res = await this.retryPaidRequest('/api/scan/deep', payload, paymentHeaders);
     }
 
     if (!res.ok) {
@@ -320,48 +332,39 @@ export class WatchTowerClient {
       throw new Error(error || 'Failed to run deep scan');
     }
 
-    this.paymentTxHash = undefined;
-
     return data as DeepScanResponse;
   }
 
   private normalizeOptions(
     chainIdOrOptions: string | number | WatchTowerRequestOptions | undefined,
-  ): { chainId?: string; paymentTxHash?: string; paymentId?: string } {
-    const normalized: { chainId?: string; paymentTxHash?: string; paymentId?: string } = {};
+  ): { chainId?: string; paymentSignature?: string } {
+    const normalized: { chainId?: string; paymentSignature?: string } = {};
 
     if (typeof chainIdOrOptions === 'object' && chainIdOrOptions !== null) {
       const chainId = chainIdOrOptions.chainId === undefined ? this.chainId : String(chainIdOrOptions.chainId);
-      const paymentTxHash = chainIdOrOptions.paymentTxHash ?? this.paymentTxHash;
-      const paymentId = chainIdOrOptions.paymentId;
       if (chainId !== undefined) normalized.chainId = chainId;
-      if (paymentTxHash !== undefined) normalized.paymentTxHash = paymentTxHash;
-      if (paymentId !== undefined) normalized.paymentId = paymentId;
+      if (chainIdOrOptions.paymentSignature !== undefined) normalized.paymentSignature = chainIdOrOptions.paymentSignature;
       return normalized;
     }
 
     if (chainIdOrOptions !== undefined) normalized.chainId = String(chainIdOrOptions);
-    if (this.paymentTxHash !== undefined) normalized.paymentTxHash = this.paymentTxHash;
     return normalized;
   }
 
-  private createHeaders(paymentTxHash?: string, paymentId?: string): Record<string, string> {
+  private createHeaders(paymentSignature?: string): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (paymentTxHash) {
-      headers.Authorization = `L402 ${paymentTxHash}`;
-    }
-    if (paymentId) headers[PAYMENT_ID_HEADER] = paymentId;
+    if (paymentSignature) headers['PAYMENT-SIGNATURE'] = paymentSignature;
     return headers;
   }
 
-  private async readPaymentRequirement(res: Response): Promise<Web3PaymentRequirement> {
+  private async readPaymentRequirement(res: Response): Promise<X402PaymentRequired> {
     const header = res.headers.get(PAYMENT_REQUIRED_HEADER);
     if (header) {
-      const requirement = decodeBase64Json<Web3PaymentRequirement>(header);
+      const requirement = decodeBase64Json<X402PaymentRequired>(header);
       if (requirement) return requirement;
     }
 
-    const body = await res.json().catch(() => null) as { paymentRequired?: Web3PaymentRequirement } | null;
+    const body = await res.json().catch(() => null) as { paymentRequired?: X402PaymentRequired } | null;
     if (body?.paymentRequired) return body.paymentRequired;
     throw new Error('WatchTower payment challenge did not include a PAYMENT-REQUIRED requirement.');
   }
@@ -369,45 +372,65 @@ export class WatchTowerClient {
   private async retryPaidRequest(
     path: '/api/scan' | '/api/scan/deep',
     payload: unknown,
-    paymentTxHash: string,
-    paymentId?: string,
+    paymentHeaders: Record<string, string>,
   ): Promise<Response> {
     const startedAt = Date.now();
-    const timeoutMs = 180_000;
+    let attempt = 0;
+    let lastError: unknown;
 
-    while (Date.now() - startedAt < timeoutMs) {
-      const response = await fetch(`${this.apiUrl}${path}`, {
-        method: 'POST',
-        headers: this.createHeaders(paymentTxHash, paymentId),
-        body: JSON.stringify(payload),
-      });
+    while (attempt < PAID_REPLAY_MAX_ATTEMPTS && Date.now() - startedAt < PAID_REPLAY_MAX_DURATION_MS) {
+      attempt += 1;
+      try {
+        const response = await fetchWithTimeout(`${this.apiUrl}${path}`, {
+          method: 'POST',
+          headers: { ...this.createHeaders(), ...paymentHeaders },
+          body: JSON.stringify(payload),
+        }, PAID_REPLAY_TIMEOUT_MS);
 
-      if (response.status !== 401) return response;
+        if (!isRetryablePaidResponse(response)) return response;
 
-      const body = await response.clone().json().catch(() => null) as { message?: string; error?: string } | null;
-      if (!isConfirmationDepthError(body?.message || body?.error)) {
-        return response;
+        const waitMs = retryAfterMs(response, Math.min(1000 * attempt, 5000));
+        if (Date.now() - startedAt + waitMs >= PAID_REPLAY_MAX_DURATION_MS || attempt >= PAID_REPLAY_MAX_ATTEMPTS) {
+          return response;
+        }
+        await delay(waitMs);
+      } catch (error) {
+        lastError = error;
+        const waitMs = Math.min(1000 * attempt, 5000);
+        if (Date.now() - startedAt + waitMs >= PAID_REPLAY_MAX_DURATION_MS || attempt >= PAID_REPLAY_MAX_ATTEMPTS) {
+          break;
+        }
+        await delay(waitMs);
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
 
-    throw new Error('Payment is confirmed, but server-side confirmation verification timed out. Retry the same request shortly with the same payment id and transaction hash.');
+    throw new Error(
+      `WatchTower paid request did not complete after retrying with the same signed payment. Retry the same request shortly. Last error: ${lastError instanceof Error ? lastError.message : 'unknown'}`,
+    );
   }
 
-  private getPaymentRpcUrl(requirement: Web3PaymentRequirement): string {
+  private getPaymentRpcUrl(chainId: number): string {
     if (this.paymentRpcUrl) return this.paymentRpcUrl;
-    if (requirement.chainId === 196) return 'https://rpc.xlayer.tech';
-    if (requirement.chainId === 1952) return 'https://testrpc.xlayer.tech';
-    throw new Error(`No payment RPC configured for chain ${requirement.chainId}. Pass paymentRpcUrl to WatchTowerClient.`);
+    if (chainId === 196) return 'https://rpc.xlayer.tech';
+    if (chainId === 1952) return 'https://testrpc.xlayer.tech';
+    throw new Error(`No payment RPC configured for chain ${chainId}. Pass paymentRpcUrl to WatchTowerClient.`);
   }
 
-  private async settlePayment(requirement: Web3PaymentRequirement): Promise<string> {
+  private async createPaymentSignatureHeaders(paymentRequired: X402PaymentRequired): Promise<Record<string, string>> {
     if (!this.paymentPrivateKey) {
-      throw new WatchTowerPaymentRequiredError(requirement);
+      throw new WatchTowerPaymentRequiredError(paymentRequired);
     }
 
-    const [{ createPublicClient, createWalletClient, defineChain, formatUnits, http, parseUnits }, { privateKeyToAccount }] = await Promise.all([
+    const [
+      { x402Client, x402HTTPClient },
+      { registerExactEvmScheme },
+      { toClientEvmSigner },
+      { createPublicClient, defineChain, http, parseUnits },
+      { privateKeyToAccount },
+    ] = await Promise.all([
+      import('@okxweb3/x402-core/client'),
+      import('@okxweb3/x402-evm/exact/client'),
+      import('@okxweb3/x402-evm'),
       import('viem'),
       import('viem/accounts'),
     ]);
@@ -417,28 +440,11 @@ export class WatchTowerClient {
     if (new URL(this.apiUrl).origin !== new URL(policy.apiOrigin).origin) {
       throw new Error('WatchTower API origin does not match the configured payment policy.');
     }
-    if (requirement.scheme !== 'evm-erc20-transfer' || requirement.chainId !== policy.chainId) {
-      throw new Error('Payment challenge does not match the configured chain or scheme.');
-    }
-    if (requirement.tokenAddress.toLowerCase() !== policy.tokenAddress.toLowerCase()) {
-      throw new Error('Payment challenge token does not match the configured payment policy.');
-    }
-    if (requirement.payTo.toLowerCase() !== policy.treasuryAddress.toLowerCase()) {
-      throw new Error('Payment challenge treasury does not match the configured payment policy.');
-    }
-    if (!requirement.paymentId) {
-      throw new Error('Payment challenge is missing a request-bound payment id.');
-    }
-    const maxAmount = parseUnits(policy.maxAmount, requirement.tokenDecimals);
-    const requestedAmount = parseUnits(requirement.amount, requirement.tokenDecimals);
-    if (requestedAmount > maxAmount) {
-      throw new Error(`Payment challenge exceeds the configured maximum of ${policy.maxAmount} ${requirement.currency}.`);
-    }
-
-    const rpcUrl = this.getPaymentRpcUrl(requirement);
+    const network = `eip155:${policy.chainId}` as X402Network;
+    const rpcUrl = this.getPaymentRpcUrl(policy.chainId);
     const chain = defineChain({
-      id: requirement.chainId,
-      name: requirement.network,
+      id: policy.chainId,
+      name: policy.chainId === 196 ? 'X Layer Mainnet' : 'X Layer',
       nativeCurrency: { name: 'OKB', symbol: 'OKB', decimals: 18 },
       rpcUrls: { default: { http: [rpcUrl] } },
     });
@@ -446,84 +452,27 @@ export class WatchTowerClient {
       ? this.paymentPrivateKey as `0x${string}`
       : `0x${this.paymentPrivateKey}` as `0x${string}`;
     const account = privateKeyToAccount(privateKey);
-    const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
     const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
-    const erc20TransferAbi = [
-      {
-        type: 'function',
-        name: 'transfer',
-        inputs: [
-          { name: 'to', type: 'address' },
-          { name: 'amount', type: 'uint256' },
-        ],
-        outputs: [{ name: '', type: 'bool' }],
-        stateMutability: 'nonpayable',
-      },
-      {
-        type: 'function',
-        name: 'balanceOf',
-        inputs: [{ name: 'account', type: 'address' }],
-        outputs: [{ name: '', type: 'uint256' }],
-        stateMutability: 'view',
-      },
-    ] as const;
-    const amount = requestedAmount;
-    const tokenBalance = await publicClient.readContract({
-      address: requirement.tokenAddress as `0x${string}`,
-      abi: erc20TransferAbi,
-      functionName: 'balanceOf',
-      args: [account.address],
+    const signer = toClientEvmSigner(account, publicClient);
+    const maxAtomicAmount = parseUnits(policy.maxAmount, policy.tokenDecimals ?? 6);
+
+    const client = new x402Client();
+    registerExactEvmScheme(client, {
+      signer,
+      networks: [network],
+      schemeOptions: { [policy.chainId]: { rpcUrl } },
     });
+    client.registerPolicy((_version: number, requirements: X402PaymentRequirements[]) => requirements.filter((requirement) => {
+      if (requirement.scheme !== 'exact') return false;
+      if (requirement.network !== network) return false;
+      if (requirement.asset.toLowerCase() !== policy.tokenAddress.toLowerCase()) return false;
+      if (requirement.payTo.toLowerCase() !== policy.treasuryAddress.toLowerCase()) return false;
+      return BigInt(requirement.amount) <= maxAtomicAmount;
+    }));
 
-    if (tokenBalance < amount) {
-      throw new WatchTowerPaymentFundingError(
-        `Payment wallet ${account.address} has ${formatUnits(tokenBalance, requirement.tokenDecimals)} ${requirement.currency}, but ${requirement.amount} ${requirement.currency} is required.`,
-      );
-    }
-
-    const nativeBalance = await publicClient.getBalance({ address: account.address });
-    const gas = await publicClient.estimateContractGas({
-      account,
-      address: requirement.tokenAddress as `0x${string}`,
-      abi: erc20TransferAbi,
-      functionName: 'transfer',
-      args: [
-        requirement.payTo as `0x${string}`,
-        amount,
-      ],
-    });
-    const gasPrice = await publicClient.getGasPrice();
-    const requiredNativeBalance = gas * gasPrice;
-
-    if (nativeBalance < requiredNativeBalance) {
-      throw new WatchTowerPaymentFundingError(
-        `Payment wallet ${account.address} has ${formatUnits(nativeBalance, 18)} native gas token, but at least ${formatUnits(requiredNativeBalance, 18)} is required for the x402 payment transaction.`,
-      );
-    }
-
-    const txHash = await walletClient.writeContract({
-      address: requirement.tokenAddress as `0x${string}`,
-      abi: erc20TransferAbi,
-      functionName: 'transfer',
-      args: [
-        requirement.payTo as `0x${string}`,
-        amount,
-      ],
-    });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-    if (receipt.status !== 'success') {
-      throw new Error('Payment transaction reverted on-chain.');
-    }
-
-    // Wait for sufficient confirmations before retrying.
-    const requiredConfirmations = Math.max(1, Math.floor(requirement.minConfirmations ?? 2));
-    let currentBlock = await publicClient.getBlockNumber();
-    while (currentBlock - receipt.blockNumber + 1n < BigInt(requiredConfirmations)) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      currentBlock = await publicClient.getBlockNumber();
-    }
-
-    return txHash;
+    const httpClient = new x402HTTPClient(client);
+    const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
+    return httpClient.encodePaymentSignatureHeader(paymentPayload);
   }
 }
 
@@ -532,21 +481,23 @@ export interface DeepScanResponse {
   tier: string;
   price: string;
   generatedAt: string;
-  chainId: string;
-  chainResolution: {
+  target: {
+    tokenAddress: string;
     chainId: string;
-    chainName: string;
-    confidence: string;
-    source: string;
-    reason: string;
-    candidates: Array<{
+    chainResolution: {
       chainId: string;
-      name: string;
-      confidenceScore: number;
-      signals: string[];
-    }>;
+      chainName: string;
+      confidence: string;
+      source: string;
+      reason: string;
+      candidates: Array<{
+        chainId: string;
+        name: string;
+        confidenceScore: number;
+        signals: string[];
+      }>;
+    };
   };
-  tokenAddress: string;
   verdict: {
     threatScore: number;
     confidence: number;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import { getActivePaymentNetwork } from '@/config/network';
 import { db } from '@/lib/db';
-import { scans, payments, usedPaymentTransactions } from '@/lib/db/schema';
+import { scans, payments } from '@/lib/db/schema';
 import { desc, eq, count, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
@@ -32,14 +33,13 @@ export async function GET(req: Request) {
     const activeAgentsPromise = db.select({
       value: sql<number>`COUNT(DISTINCT LOWER(${scans.agentWallet}))`,
     }).from(scans).where(sql`${scans.agentWallet} IS NOT NULL`);
+    const paymentNetwork = getActivePaymentNetwork();
+    const paymentDivisor = 10 ** paymentNetwork.token.decimals;
     const settledRevenuePromise = db.select({
-      value: sql<number>`COALESCE(SUM(
-        CASE 
-          WHEN ${usedPaymentTransactions.network} = 'X Layer Mainnet' THEN CAST(${usedPaymentTransactions.amount} AS REAL) / 1000000.0
-          ELSE CAST(${usedPaymentTransactions.amount} AS REAL) / 1000000000000000000.0
-        END
-      ), 0)`,
-    }).from(usedPaymentTransactions);
+      value: sql<number>`COALESCE(SUM(CAST(${payments.amount} AS REAL) / ${paymentDivisor}), 0)`,
+    })
+      .from(payments)
+      .where(sql`${payments.status} IN ('settled', 'processing', 'completed')`);
     const leaderboardPromise = db.select({
       agentWallet: sql<string>`LOWER(${scans.agentWallet})`.as('agent_wallet'),
       totalScans: count().as('total_scans'),

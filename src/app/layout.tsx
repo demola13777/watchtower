@@ -1,20 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://watchtowr.xyz";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -53,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en" className="font-system">
       <body className="antialiased bg-slate-950 text-slate-50 relative selection:bg-cyan-500/30">
         <div className="fixed inset-0 bg-cyber-grid opacity-30 pointer-events-none z-[-1]" />
         <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-950/95 to-slate-900/95 pointer-events-none z-[-1]" />

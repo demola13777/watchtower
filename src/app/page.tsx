@@ -96,7 +96,7 @@ export default function Home() {
               <div>
                 <h2 className="text-3xl font-bold text-white mb-6">A security gate your agent can enforce before execution.</h2>
                 <p className="text-slate-400 mb-8 leading-relaxed">
-                  No dashboards in the execution path. WatchTower pairs a machine-readable verdict with a self-hosted x402-style payment boundary, so agents can acquire threat intelligence per scan on X Layer Mainnet.
+                  No dashboards in the execution path. WatchTower pairs a machine-readable verdict with OKX x402 facilitator settlement, so agents can acquire threat intelligence per scan on X Layer Mainnet.
                 </p>
                 
                 <div className="space-y-4 mb-8">
@@ -146,6 +146,7 @@ export default function Home() {
 {'    '}apiOrigin: <span className="text-emerald-400">&apos;https://watchtowr.xyz&apos;</span>,{'\n'}
 {'    '}chainId: <span className="text-purple-400">196</span>,{'\n'}
 {'    '}tokenAddress: process.env.MAINNET_USDT_ADDRESS,{'\n'}
+{'    '}tokenDecimals: <span className="text-purple-400">6</span>,{'\n'}
 {'    '}treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS,{'\n'}
 {'    '}maxAmount: <span className="text-emerald-400">&apos;1&apos;</span>,{'\n'}
 {'  }'}, {'\n'}
@@ -329,10 +330,10 @@ export default function Home() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-4">API Pricing for Autonomous Scale</h2>
             <p className="text-slate-400 text-sm max-w-xl mx-auto mb-4">
-              WatchTower uses self-hosted x402-style machine-to-machine payments. Pay purely for what your agents consume. No subscriptions.
+              WatchTower uses x402 machine-to-machine payments settled through the OKX facilitator. Pay purely for what your agents consume. No subscriptions.
             </p>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-bold rounded-lg shadow-sm">
-              <Zap className="h-3.5 w-3.5" /> X Layer Mainnet-ready: payment policy, settlement verification, and attestation are network-configured.
+              <Zap className="h-3.5 w-3.5" /> X Layer Mainnet-ready: payment policy, facilitator settlement, and attestation are network-configured.
             </div>
           </div>
 

@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
-import { Shield, ShieldAlert, Activity, Zap, Hexagon, Fingerprint, Users, MessageCircle, Target, CheckCircle, ExternalLink } from "lucide-react";
+import { Shield, ShieldAlert, Activity, Zap, Fingerprint, Users, MessageCircle, Target, CheckCircle, ExternalLink } from "lucide-react";
 
 // M3: Pre-defined complete Tailwind class names (no dynamic interpolation)
 const STATUS_STYLES = {
@@ -353,4 +353,3 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const scans = sqliteTable('scans', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -22,7 +22,7 @@ export const agents = sqliteTable('agents', {
 
 export const payments = sqliteTable('payments', {
   paymentId: text('payment_id').primaryKey(),
-  status: text('status').notNull().default('pending'), // pending | settled | rejected | expired
+  status: text('status').notNull().default('pending'), // pending | settling | settled | processing | completed | rejected | expired
   tier: text('tier').notNull(),
   amount: text('amount').notNull(),
   currency: text('currency').notNull(),
@@ -42,7 +42,11 @@ export const payments = sqliteTable('payments', {
   createdAt: integer('created_at').notNull(),
   expiresAt: integer('expires_at').notNull(),
   settledAt: integer('settled_at'),
-});
+}, (table) => [
+  uniqueIndex('payments_settlement_tx_hash_unique').on(table.settlementTxHash),
+  index('payments_request_payer_status_idx').on(table.requestHash, table.payer, table.status),
+  index('payments_status_expires_idx').on(table.status, table.expiresAt),
+]);
 
 export const usedPaymentTransactions = sqliteTable('used_payment_transactions', {
   txHash: text('tx_hash').primaryKey(),

@@ -10,7 +10,6 @@ import {
   Database,
   ExternalLink,
   GitBranch,
-  Hexagon,
   Network,
   Shield,
   Terminal,
@@ -164,6 +163,7 @@ const wt = new WatchTowerClient({
     apiOrigin: "https://watchtowr.xyz",
     chainId: 196,
     tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
+    tokenDecimals: 6,
     treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS!,
     maxAmount: "1",
   },
@@ -178,7 +178,7 @@ try {
   }
 }`}</CodeBlock>
             <p>
-              Configure <InlineCode>paymentPrivateKey</InlineCode> only in a secure agent runtime. Automatic settlement also requires a <InlineCode>paymentPolicy</InlineCode> that pins the API origin, chain, token, treasury, and maximum amount. Without a key, the SDK raises a payment-required error with the challenge details.
+              Configure <InlineCode>paymentPrivateKey</InlineCode> only in a secure agent runtime. Automatic x402 signing also requires a <InlineCode>paymentPolicy</InlineCode> that pins the API origin, chain, token, decimals, treasury, and maximum amount. Without a key, the SDK raises a payment-required error with the challenge details.
             </p>
           </Section>
 
@@ -221,7 +221,7 @@ POST /api/scan/deep  // Tier 1, 1 USDT
             </p>
             <CodeBlock language="bash">{`PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>`}</CodeBlock>
             <p>
-              The OKX facilitator verifies the payment signature and settles the transfer on-chain. The <InlineCode>PaymentService</InlineCode> boundary keeps the facilitator integration replaceable without changing scan routes or agent integrations.
+              The SDK creates the signed payment payload, then WatchTower asks the OKX facilitator to verify the signature and settle the transfer on-chain. Completed facilitator settlements are recorded before the scan runs so Command Center revenue reflects accepted payments even if a report step needs a retry.
             </p>
           </Section>
 
@@ -250,7 +250,9 @@ MAINNET_RPC_URL=https://your-dedicated-x-layer-rpc
 MAINNET_TREASURY_ADDRESS=0x...
 MAINNET_USDT_ADDRESS=0x...
 MAINNET_PAYMENT_TOKEN_DECIMALS=6
-PAYMENT_MIN_CONFIRMATIONS=<your-confirmation-policy>`}</CodeBlock>
+OKX_API_KEY=...
+OKX_SECRET_KEY=...
+OKX_PASSPHRASE=...`}</CodeBlock>
             <p>
               Keep <InlineCode>PRIVATE_KEY</InlineCode> out of public repos. Before public mainnet traffic, use managed custody, a relayer, or KMS-backed signing for the registry writer and complete the mainnet readiness checklist in this repository.
             </p>

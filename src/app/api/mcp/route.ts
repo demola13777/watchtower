@@ -33,6 +33,15 @@ type JsonRpcToolCall = {
   };
 };
 
+function paymentHashArguments(argumentsValue: unknown): unknown {
+  if (!argumentsValue || typeof argumentsValue !== 'object' || Array.isArray(argumentsValue)) {
+    return argumentsValue;
+  }
+  const { agentWallet: _agentWallet, ...paymentIdentityArguments } = argumentsValue as Record<string, unknown>;
+  void _agentWallet;
+  return paymentIdentityArguments;
+}
+
 async function requireMcpToolPayment(req: Request): Promise<{ response?: Response; receipt?: PaymentReceipt }> {
   const payload = (await req.clone().json().catch(() => null)) as JsonRpcToolCall | JsonRpcToolCall[] | null;
   const calls = Array.isArray(payload) ? payload : payload ? [payload] : [];
@@ -101,7 +110,7 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
     tools: paidToolCalls
       .map((call) => ({
         name: call.params?.name,
-        arguments: call.params?.arguments,
+        arguments: paymentHashArguments(call.params?.arguments),
       })),
   });
   const payment = await requirePayment(
@@ -144,10 +153,10 @@ export async function POST(req: Request): Promise<Response> {
         );
       }
       if (claim.state === 'processing') {
-        return new Response(
+        return setPaymentResponseHeader(new Response(
           JSON.stringify({ jsonrpc: '2.0', error: { code: -32009, message: 'Your paid tool call is already processing. Retry shortly.' }, id: null }),
           { status: 409, headers: { 'Content-Type': 'application/json', 'Retry-After': '2' } },
-        );
+        ), paymentResult.receipt);
       }
       claimedPaymentId = paymentResult.receipt.paymentId;
     }

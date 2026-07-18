@@ -11,7 +11,7 @@ WatchTower's application architecture is mainnet-capable: payment-network values
 - The deployed runtime bytecode matches the reviewed build; `owner()` is `0x9cfd99ae73da2402f70c4198a3b3448a19bba68f`.
 - A `0.5 USD0` Firewall SDK canary completed, including payment verification and a confirmed `ScanRecorded` attestation: `0xc0d3748d09322bd46977d0d9789ccfebe50e678e9883a53e7cd3efdde150f371`.
 - A `1 USD0` Deep Scan SDK canary completed for Ethereum WETH, including report persistence and a confirmed `ScanRecorded` attestation: `0x377a16231420c6c8aa77c46b824025cbe8a193b99e391d3b2d8b7866eb75058a`.
-- Both canaries used replay-protected payment intents, mined ERC-20 transfers to the configured treasury, and the expected agent-wallet balance changes.
+- Both canaries used replay-protected payment records, settled ERC-20 transfers to the configured treasury, and the expected agent-wallet balance changes.
 - Rotated treasury / current registry owner target: `0xE4A3089Fc40C534DC4c628B7551e6f711fcCe1A1`.
 - Rotated agent-payment wallet: `0x1bF9f3D8643Ca416878837DF610c9FC8561067b7`.
 - Replacement registry deployed from the rotated owner key at `0x8B9d300f133E3bC754A88D00c1c46f8114019a2A`.
@@ -23,7 +23,7 @@ WatchTower's application architecture is mainnet-capable: payment-network values
 - Replacement Deep Scan registry attestation: `0x3f4220c0cc9e65b8765c2703366bebae4ad284d47f9799f04ae30a79f0182239`.
 - Replacement Deep Scan report hash: `5ce37c50d706691135c5851e3a5038399f5635f8628ab583ad08f49bffc40ae6`.
 - Replacement contract source verification completed through Sourcify with `exact_match`. Verification job: `809a97a8-2156-400b-ad48-2796d99c71f6`.
-- The service currently uses an owner-operated registry signer and self-hosted x402-style ERC-20 verification. It is not a hosted x402 facilitator and does not yet provide decentralized attestation generation.
+- The service currently uses an owner-operated registry signer and OKX x402 facilitator settlement. It does not yet provide decentralized attestation generation.
 
 ## Release Gate
 
@@ -62,7 +62,7 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [x] Set `MAINNET_USDT_ADDRESS` locally to the canonical X Layer Mainnet USD0 contract address.
 - [x] Set `MAINNET_PAYMENT_TOKEN_DECIMALS=6` locally and verify the value from the deployed ERC-20 contract.
 - [x] Set `PAYMENT_MIN_CONFIRMATIONS=2` locally.
-- [x] Test that a transaction below the documented mainnet confirmation depth is rejected.
+- [x] Test that facilitator settlement failures are rejected before scan processing.
 - [x] Remove stale testnet/Vercel override values from the active local `.env.local` block.
 - [ ] Keep testnet and development values in separate Vercel environments or secret stores. Do not share a treasury, signer, or payment token between environments.
 - [x] Confirm that the active local mainnet variables do not point to `testrpc.xlayer.tech`, a testnet explorer, chain `1952`, or a test token.
@@ -76,11 +76,11 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [x] Repeat the real `0.5 USD0` firewall settlement canary with the rotated treasury, rotated agent wallet, and replacement registry.
 - [x] Confirm a real `1 USD0` deep-scan settlement completed only after the registry transaction was mined successfully against the first registry/treasury configuration.
 - [x] Repeat the real `1 USD0` deep-scan settlement canary with the rotated treasury, rotated agent wallet, and replacement registry.
-- [x] Confirm an incorrect token, wrong chain, failed transaction, wrong treasury, insufficient amount, unconfirmed transaction, and reused transaction hash are all rejected.
+- [x] Confirm an incorrect token, wrong chain, failed settlement, wrong treasury, insufficient amount, malformed payment signature, and concurrent retry are all rejected or serialized correctly.
 - [x] Confirm concurrent retries of the same `paymentId` yield one completed result rather than duplicate scans or duplicate charge acceptance in local web tests.
-- [x] Confirm the payment record, used-hash registry, and revenue telemetry use the production Turso database.
+- [x] Confirm the payment record, compatibility settlement ledger, and revenue telemetry use the production Turso database.
 - [x] Reconcile accepted treasury transfers against database payment records and define an operational reconciliation cadence.
-- [x] Decide that the self-hosted verifier is the V1 production model and document the protocol envelope and interoperability expectations.
+- [x] Decide that OKX x402 facilitator settlement is the V1 production model and document the protocol envelope and interoperability expectations.
 - [x] Define support and refund handling for transfers that reached the treasury but could not be associated with a valid payment intent.
 
 ## 4. Treasury and Key Management
@@ -120,7 +120,7 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [ ] Run an installed-package integration test against the production API, not only a workspace build.
 - [ ] Require agent SDK callers that enable automatic settlement to provide a production payment policy pinning API origin, chain `196`, token, treasury, and maximum amount.
 - [ ] Confirm MCP and REST issue identical mainnet payment challenges and cannot bypass payment, validation, or replay protection.
-- [ ] Test browser-wallet payment with MetaMask, OKX Wallet, and at least one additional EVM-compatible wallet on X Layer Mainnet.
+- [ ] Test the browser Command Center free-scan and telemetry flow with the production X Layer Mainnet configuration.
 - [ ] Confirm wallet network-add/switch metadata, explorer links, balance preflight, token decimals, and error states use the configured mainnet values.
 - [ ] Confirm `/report/[scanHash]` and `/verify` show the mainnet explorer transaction and a real registry event after deployment.
 - [ ] Replace any remaining release-facing references to testnet addresses, chain IDs, explorer URLs, or faucet instructions after the mainnet deployment has been verified.

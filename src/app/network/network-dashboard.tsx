@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Shield, ShieldAlert, Activity, Zap, Hexagon, Server, Database, Search, Fingerprint, Users, MessageCircle, ExternalLink, Loader2, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
+import { Shield, ShieldAlert, Activity, Zap, Server, Database, Search, Fingerprint, Users, MessageCircle, ExternalLink, Loader2, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { AgentRelayPanel } from "@/components/agent-relay-panel";

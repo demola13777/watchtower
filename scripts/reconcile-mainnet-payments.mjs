@@ -26,6 +26,7 @@ const databaseToken = required('TURSO_AUTH_TOKEN');
 const tokenAddress = required('MAINNET_USDT_ADDRESS').toLowerCase();
 const treasuryAddress = required('MAINNET_TREASURY_ADDRESS').toLowerCase();
 const decimals = Number(required('MAINNET_PAYMENT_TOKEN_DECIMALS'));
+const mainnetNetwork = `eip155:${process.env.MAINNET_CHAIN_ID?.trim() || '196'}`;
 
 if (!Number.isInteger(decimals) || decimals < 0) {
   throw new Error('MAINNET_PAYMENT_TOKEN_DECIMALS must be a non-negative integer.');
@@ -36,9 +37,10 @@ const chain = createPublicClient({ transport: http(rpcUrl) });
 const { rows } = await database.execute({
   sql: `SELECT payment_id, amount, currency, settlement_tx_hash
         FROM payments
-        WHERE status = 'completed' AND network = 'X Layer Mainnet'
-        ORDER BY completed_at ASC`,
-  args: [],
+        WHERE status IN ('settled', 'processing', 'completed')
+          AND network IN (?, 'X Layer Mainnet')
+        ORDER BY COALESCE(completed_at, settled_at, created_at) ASC`,
+  args: [mainnetNetwork],
 });
 
 const failures = [];
@@ -57,7 +59,9 @@ for (const row of rows) {
     continue;
   }
 
-  const requiredAmount = parseUnits(amount, decimals);
+  const requiredAmount = amount.includes('.')
+    ? parseUnits(amount, decimals)
+    : BigInt(amount);
   const transfer = receipt.logs.find((log) => {
     if (log.address.toLowerCase() !== tokenAddress) return false;
     try {

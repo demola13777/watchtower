@@ -1,9 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getActivePaymentNetwork, getRequiredPaymentNetwork } from '@/config/network';
 import { db } from '@/lib/db';
-import { payments } from '@/lib/db/schema';
+import { payments, usedPaymentTransactions } from '@/lib/db/schema';
 import {
   buildPaymentRequired,
   extractPaymentPayload,
@@ -15,10 +15,12 @@ import {
   type SettleResponse,
 } from '@/lib/x402';
 import { logger } from '@/lib/logger';
+import type { PaymentRequirements } from '@okxweb3/x402-core/types';
 
 const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
 const PAYMENT_RESPONSE_HEADER = 'PAYMENT-RESPONSE';
 const PAYMENT_INTENT_TTL_MS = 10 * 60 * 1000;
+const PAYMENT_SETTLING_STALE_MS = 2 * 60 * 1000;
 
 export interface PaymentRequest {
   request: Request;
@@ -55,6 +57,22 @@ export type PaymentResult =
 
 export interface PaymentService {
   validatePayment(input: PaymentRequest): Promise<PaymentResult>;
+}
+
+type StoredPayment = typeof payments.$inferSelect;
+
+class PaymentPersistenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PaymentPersistenceError';
+  }
+}
+
+class PaymentCompletionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PaymentCompletionError';
+  }
 }
 
 function canonicalize(value: unknown): unknown {
@@ -106,6 +124,7 @@ async function createPaymentIntent(
     request,
     costUsdt,
     `WatchTower ${tier} scan`,
+    { paymentId, requestHash: requestHash ?? '', tier },
   );
 
   const now = Date.now();
@@ -146,6 +165,248 @@ async function getPaymentIntent(paymentId: string) {
     .where(eq(payments.paymentId, paymentId))
     .limit(1);
   return payment ?? null;
+}
+
+function getRequirementPaymentId(paymentRequirements: PaymentRequirements): string | null {
+  const paymentId = paymentRequirements.extra?.paymentId;
+  return typeof paymentId === 'string' && paymentId ? paymentId : null;
+}
+
+function getRequirementRequestHash(paymentRequirements: PaymentRequirements): string | null {
+  const value = paymentRequirements.extra?.requestHash;
+  return typeof value === 'string' ? value : null;
+}
+
+function getRequirementTier(paymentRequirements: PaymentRequirements): string | null {
+  const value = paymentRequirements.extra?.tier;
+  return typeof value === 'string' ? value : null;
+}
+
+function expectedAtomicAmount(costUsdt: number): string {
+  const { token } = getRequiredPaymentNetwork();
+  return Math.round(costUsdt * 10 ** token.decimals).toString();
+}
+
+function safeJsonParse<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAddress(value: string): string {
+  return value.toLowerCase();
+}
+
+function validateAcceptedRequirement(input: {
+  accepted: PaymentRequirements;
+  existingPayment: StoredPayment;
+  request: Request;
+  costUsdt: number;
+  tier: string;
+  requestHash?: string;
+}): string | null {
+  const { accepted, existingPayment, request, costUsdt, tier, requestHash } = input;
+  const requiredNetwork = getRequiredPaymentNetwork();
+  const expectedNetwork = getX402Network();
+  const expectedAmount = expectedAtomicAmount(costUsdt);
+  const pathname = new URL(request.url).pathname;
+  const method = request.method.toUpperCase();
+  const storedChallenge = safeJsonParse<X402PaymentRequired>(existingPayment.requirement);
+  const storedRequirement = storedChallenge?.accepts?.[0] ?? null;
+  const acceptedPaymentId = getRequirementPaymentId(accepted);
+  const acceptedRequestHash = getRequirementRequestHash(accepted);
+  const acceptedTier = getRequirementTier(accepted);
+
+  if (!acceptedPaymentId) return 'Payment challenge is missing a request-bound payment id.';
+  if (acceptedPaymentId !== existingPayment.paymentId) return 'Payment id mismatch for this WatchTower request.';
+  if (existingPayment.requestHash !== (requestHash ?? '')) return 'Payment request hash mismatch. This x402 signature was created for a different WatchTower request.';
+  if (acceptedRequestHash !== (requestHash ?? '')) return 'Payment challenge request hash mismatch.';
+  if (acceptedTier !== tier) return 'Payment challenge tier mismatch.';
+  if (existingPayment.tier !== tier) return 'Payment intent tier mismatch.';
+  if (existingPayment.resource !== pathname) return 'Payment resource mismatch.';
+  if (existingPayment.method !== method) return 'Payment method mismatch.';
+  if (storedChallenge?.resource?.url && storedChallenge.resource.url !== pathname) return 'Payment challenge resource mismatch.';
+  if (accepted.scheme !== 'exact') return `Unsupported payment scheme: ${accepted.scheme}. Only "exact" is supported.`;
+  if (accepted.network !== expectedNetwork) return `Payment network mismatch. Expected ${expectedNetwork}, got ${accepted.network}.`;
+  if (normalizeAddress(accepted.asset) !== normalizeAddress(requiredNetwork.token.address)) return 'Payment asset mismatch.';
+  if (normalizeAddress(accepted.payTo) !== normalizeAddress(requiredNetwork.treasuryAddress)) return 'Payment recipient mismatch.';
+  if (accepted.amount !== expectedAmount) return `Payment amount mismatch. Expected ${expectedAmount}, got ${accepted.amount}.`;
+  if (existingPayment.amount !== expectedAmount) return `Stored payment amount mismatch. Expected ${expectedAmount}, got ${existingPayment.amount}.`;
+
+  if (storedRequirement) {
+    if (storedRequirement.scheme !== accepted.scheme) return 'Accepted payment scheme does not match the issued challenge.';
+    if (storedRequirement.network !== accepted.network) return 'Accepted payment network does not match the issued challenge.';
+    if (normalizeAddress(storedRequirement.asset) !== normalizeAddress(accepted.asset)) return 'Accepted payment asset does not match the issued challenge.';
+    if (normalizeAddress(storedRequirement.payTo) !== normalizeAddress(accepted.payTo)) return 'Accepted payment recipient does not match the issued challenge.';
+    if (storedRequirement.amount !== accepted.amount) return 'Accepted payment amount does not match the issued challenge.';
+    if (getRequirementPaymentId(storedRequirement) !== acceptedPaymentId) return 'Accepted payment id does not match the issued challenge.';
+    if (getRequirementRequestHash(storedRequirement) !== acceptedRequestHash) return 'Accepted payment request hash does not match the issued challenge.';
+    if (getRequirementTier(storedRequirement) !== acceptedTier) return 'Accepted payment tier does not match the issued challenge.';
+  }
+
+  return null;
+}
+
+function getReceiptFromStoredPayment(payment: StoredPayment, costUsdt: number): PaymentReceipt | null {
+  if (!payment.payer || !payment.settlementTxHash) return null;
+  return {
+    mode: 'x402-facilitator',
+    tier: payment.tier,
+    amountUsdt: costUsdt,
+    currency: payment.currency,
+    network: payment.network,
+    chainId: getRequiredPaymentNetwork().chainId,
+    payer: payment.payer,
+    settlementTxHash: payment.settlementTxHash,
+    paymentId: payment.paymentId,
+    requestHash: payment.requestHash,
+  };
+}
+
+async function getPaymentBySettlementTxHash(txHash: string): Promise<StoredPayment | null> {
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.settlementTxHash, txHash.toLowerCase()))
+    .limit(1);
+  return payment ?? null;
+}
+
+type SettlementClaim =
+  | { state: 'claimed' }
+  | { state: 'settling' }
+  | { state: 'settled'; payment: StoredPayment }
+  | { state: 'processing'; payment: StoredPayment }
+  | { state: 'completed'; payment: StoredPayment }
+  | { state: 'invalid'; reason: string };
+
+async function claimPaymentSettlement(paymentId: string): Promise<SettlementClaim> {
+  const now = Date.now();
+  const claimed = await db.update(payments)
+    .set({ status: 'settling', settledAt: now, failureReason: null })
+    .where(and(eq(payments.paymentId, paymentId), eq(payments.status, 'pending')))
+    .returning({ paymentId: payments.paymentId });
+
+  if (claimed.length > 0) return { state: 'claimed' };
+
+  const latest = await getPaymentIntent(paymentId);
+  if (!latest) return { state: 'invalid', reason: 'Payment intent was not found.' };
+  if (latest.status === 'settling') {
+    const settlingSince = latest.settledAt ?? latest.createdAt;
+    if (now - settlingSince > PAYMENT_SETTLING_STALE_MS) {
+      const reclaimed = await db.update(payments)
+        .set({ settledAt: now, failureReason: null })
+        .where(and(
+          eq(payments.paymentId, paymentId),
+          eq(payments.status, 'settling'),
+          sql`COALESCE(${payments.settledAt}, ${payments.createdAt}) <= ${now - PAYMENT_SETTLING_STALE_MS}`,
+        ))
+        .returning({ paymentId: payments.paymentId });
+      if (reclaimed.length > 0) return { state: 'claimed' };
+    }
+    return { state: 'settling' };
+  }
+  if (latest.status === 'settled') return { state: 'settled', payment: latest };
+  if (latest.status === 'processing') return { state: 'processing', payment: latest };
+  if (latest.status === 'completed') return { state: 'completed', payment: latest };
+  return { state: 'invalid', reason: `Payment intent is ${latest.status}, not pending.` };
+}
+
+async function releasePaymentSettlement(paymentId: string, reason: string): Promise<void> {
+  await db.update(payments)
+    .set({ status: 'pending', settledAt: null, failureReason: reason })
+    .where(and(eq(payments.paymentId, paymentId), eq(payments.status, 'settling')));
+}
+
+async function persistSettlement(input: {
+  paymentId: string;
+  request: Request;
+  paymentRequirements: PaymentRequirements;
+  paymentPayload: unknown;
+  settlement: {
+    payer?: string;
+    transaction: string;
+    network: string;
+    amount?: string;
+  };
+  tier: string;
+  currency: string;
+  requestHash?: string;
+}): Promise<StoredPayment> {
+  const { paymentId, request, paymentRequirements, paymentPayload, settlement, tier, currency, requestHash } = input;
+  const now = Date.now();
+  const requiredNetwork = getRequiredPaymentNetwork();
+  const payer = (settlement.payer ?? '0x0000000000000000000000000000000000000000').toLowerCase();
+  const settlementTxHash = settlement.transaction.toLowerCase();
+  const amount = settlement.amount ?? paymentRequirements.amount;
+
+  try {
+    const updated = await db.update(payments)
+      .set({
+        status: 'settled',
+        amount,
+        currency,
+        network: settlement.network,
+        scheme: paymentRequirements.scheme,
+        payer,
+        payTo: paymentRequirements.payTo.toLowerCase(),
+        resource: new URL(request.url).pathname,
+        method: request.method.toUpperCase(),
+        requestHash: requestHash ?? '',
+        requirement: JSON.stringify(paymentRequirements),
+        paymentPayload: JSON.stringify(paymentPayload),
+        settlementTxHash,
+        settledAt: now,
+        failureReason: null,
+      })
+      .where(and(eq(payments.paymentId, paymentId), eq(payments.status, 'settling')))
+      .returning();
+
+    const persisted = updated[0];
+    if (!persisted) {
+      const latest = await getPaymentIntent(paymentId);
+      if (latest?.status === 'settled' || latest?.status === 'processing' || latest?.status === 'completed') {
+        if (latest.settlementTxHash?.toLowerCase() === settlementTxHash) return latest;
+        throw new PaymentPersistenceError(`Payment ${paymentId} was already ${latest.status} with a different settlement transaction.`);
+      }
+      throw new PaymentPersistenceError(`Payment ${paymentId} could not be persisted from pending to settled.`);
+    }
+
+    await db.insert(usedPaymentTransactions).values({
+      txHash: settlementTxHash,
+      network: getActivePaymentNetwork().name,
+      chainId: requiredNetwork.chainId,
+      tokenAddress: requiredNetwork.token.address.toLowerCase(),
+      treasuryAddress: paymentRequirements.payTo.toLowerCase(),
+      payer,
+      amount,
+      tier,
+      paymentId,
+      requestHash: requestHash ?? '',
+      createdAt: now,
+    }).onConflictDoNothing();
+
+    return persisted;
+  } catch (error) {
+    const recovered = await getPaymentBySettlementTxHash(settlementTxHash);
+    if (recovered) {
+      if (recovered.requestHash === (requestHash ?? '') && recovered.tier === tier) {
+        return recovered;
+      }
+      throw new PaymentPersistenceError(`Settlement transaction ${settlementTxHash} is already bound to a different WatchTower payment.`);
+    }
+
+    logger.payment('settlement_db_error', {
+      paymentId,
+      error: error instanceof Error ? error.message : String(error),
+      tx: settlementTxHash,
+    });
+    throw error instanceof PaymentPersistenceError
+      ? error
+      : new PaymentPersistenceError(`Payment ${paymentId} settled but could not be durably persisted.`);
+  }
 }
 
 // ─── x402 Standard Payment Service ──────────────────────────────────────────
@@ -194,25 +455,81 @@ export class X402PaymentService implements PaymentService {
       );
     }
 
-    // Step 3: Verify the payment payload matches a known intent.
-    // In x402, the paymentPayload carries the full accepted requirements so we
-    // can match against what we asked for. We verify amount/payTo/network/scheme.
-    const network = getX402Network();
-    if (paymentRequirements.network !== network) {
+    // Step 3: Verify the payment payload matches the intent and challenge we issued.
+    const paymentIdFromRequirement = getRequirementPaymentId(paymentRequirements);
+    if (!paymentIdFromRequirement) {
       return failure(
         401,
         'Unauthorized',
-        `Payment network mismatch. Expected ${network}, got ${paymentRequirements.network}.`,
+        'Payment challenge is missing a request-bound payment id.',
         tier,
         `${costUsdt} ${activeNetwork.token.symbol}`,
       );
     }
 
-    if (paymentRequirements.scheme !== 'exact') {
+    const existingPayment = await getPaymentIntent(paymentIdFromRequirement);
+    if (!existingPayment) {
       return failure(
         401,
         'Unauthorized',
-        `Unsupported payment scheme: ${paymentRequirements.scheme}. Only "exact" is supported.`,
+        'Payment intent was not found or has expired. Request a fresh x402 challenge and retry.',
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
+    }
+
+    const validationError = validateAcceptedRequirement({
+      accepted: paymentRequirements,
+      existingPayment,
+      request,
+      costUsdt,
+      tier,
+      requestHash,
+    });
+    if (validationError) {
+      return failure(
+        401,
+        'Unauthorized',
+        validationError,
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
+    }
+
+    if (existingPayment.status !== 'pending') {
+      const receipt = getReceiptFromStoredPayment(existingPayment, costUsdt);
+      if (receipt) {
+        logger.payment('settlement_resumed', {
+          paymentId: existingPayment.paymentId,
+          tier: existingPayment.tier,
+          status: existingPayment.status,
+          txHash: existingPayment.settlementTxHash,
+        });
+        return { ok: true, receipt };
+      }
+      if (existingPayment.status === 'settling') {
+        return failure(
+          409,
+          'Conflict',
+          'Payment settlement is already processing. Retry this same request shortly.',
+          tier,
+          `${costUsdt} ${activeNetwork.token.symbol}`,
+        );
+      }
+    }
+
+    const settlementClaim = await claimPaymentSettlement(existingPayment.paymentId);
+    if (settlementClaim.state !== 'claimed') {
+      if ('payment' in settlementClaim) {
+        const receipt = getReceiptFromStoredPayment(settlementClaim.payment, costUsdt);
+        if (receipt) return { ok: true, receipt };
+      }
+      return failure(
+        settlementClaim.state === 'invalid' ? 401 : 409,
+        settlementClaim.state === 'invalid' ? 'Unauthorized' : 'Conflict',
+        settlementClaim.state === 'invalid'
+          ? settlementClaim.reason
+          : 'Payment settlement is already processing. Retry this same request shortly.',
         tier,
         `${costUsdt} ${activeNetwork.token.symbol}`,
       );
@@ -222,6 +539,7 @@ export class X402PaymentService implements PaymentService {
     const settlement = await verifyAndSettle(paymentPayload, paymentRequirements);
 
     if (!settlement.ok) {
+      await releasePaymentSettlement(existingPayment.paymentId, settlement.reason).catch(() => undefined);
       logger.payment('verification_failed', {
         tier,
         reason: settlement.reason,
@@ -236,60 +554,52 @@ export class X402PaymentService implements PaymentService {
       );
     }
 
-    // Step 5: Record the settlement in our database
-    const paymentId = crypto.randomUUID();
+    // Step 5: Record the settlement in our database before returning success.
+    let persistedPayment: StoredPayment;
     try {
-      await db.insert(payments).values({
-        paymentId,
-        status: 'settled',
+      persistedPayment = await persistSettlement({
+        paymentId: existingPayment.paymentId,
+        request,
+        paymentRequirements,
+        paymentPayload,
+        settlement,
         tier,
-        amount: settlement.amount,
         currency: activeNetwork.token.symbol,
-        network: settlement.network,
-        scheme: 'exact',
-        payer: settlement.payer.toLowerCase(),
-        payTo: paymentRequirements.payTo.toLowerCase(),
-        resource: new URL(request.url).pathname,
-        method: request.method.toUpperCase(),
-        requestHash: requestHash ?? '',
-        requirement: JSON.stringify(paymentRequirements),
-        paymentPayload: JSON.stringify(paymentPayload),
-        settlementTxHash: settlement.transaction,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + PAYMENT_INTENT_TTL_MS,
-        settledAt: Date.now(),
+        requestHash,
       });
     } catch (error) {
-      // If insert fails (e.g. duplicate), the payment was likely already processed
-      logger.payment('settlement_db_error', {
-        error: error instanceof Error ? error.message : String(error),
-        tx: settlement.transaction,
-      });
+      return failure(
+        503,
+        'Service Unavailable',
+        error instanceof Error ? error.message : 'Payment settled but could not be durably persisted. Retry this same signed request shortly.',
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
     }
 
     logger.payment('settled', {
-      paymentId,
+      paymentId: persistedPayment.paymentId,
       tier,
-      amount: settlement.amount,
-      currency: activeNetwork.token.symbol,
-      txHash: settlement.transaction,
-      payer: settlement.payer,
+      amount: persistedPayment.amount,
+      currency: persistedPayment.currency,
+      txHash: persistedPayment.settlementTxHash ?? undefined,
+      payer: persistedPayment.payer ?? undefined,
     });
+
+    const receipt = getReceiptFromStoredPayment(persistedPayment, costUsdt);
+    if (!receipt) {
+      return failure(
+        503,
+        'Service Unavailable',
+        'Payment was persisted without settlement receipt metadata. Retry this same signed request shortly.',
+        tier,
+        `${costUsdt} ${activeNetwork.token.symbol}`,
+      );
+    }
 
     return {
       ok: true,
-      receipt: {
-        mode: 'x402-facilitator',
-        tier,
-        amountUsdt: costUsdt,
-        currency: activeNetwork.token.symbol,
-        network: settlement.network,
-        chainId: getRequiredPaymentNetwork().chainId,
-        payer: settlement.payer,
-        settlementTxHash: settlement.transaction,
-        paymentId,
-        requestHash,
-      },
+      receipt,
     };
   }
 }
@@ -390,10 +700,25 @@ export async function completePayment(
   paymentId: string,
   responsePayload: string,
 ): Promise<void> {
-  await db.update(payments)
+  const completed = await db.update(payments)
     .set({ status: 'completed', responsePayload, completedAt: Date.now() })
-    .where(and(eq(payments.paymentId, paymentId), eq(payments.status, 'processing')));
-  logger.payment('completed', { paymentId });
+    .where(and(eq(payments.paymentId, paymentId), eq(payments.status, 'processing')))
+    .returning({ paymentId: payments.paymentId });
+
+  if (completed.length > 0) {
+    logger.payment('completed', { paymentId });
+    return;
+  }
+
+  const latest = await getPaymentIntent(paymentId);
+  if (latest?.status === 'completed' && latest.responsePayload) {
+    logger.payment('completion_already_recorded', { paymentId });
+    return;
+  }
+
+  const state = latest?.status ?? 'missing';
+  logger.payment('completion_failed', { paymentId, state });
+  throw new PaymentCompletionError(`Payment ${paymentId} could not be completed because it is ${state}, not processing.`);
 }
 
 export async function releasePaymentProcessing(paymentId: string, reason: string): Promise<void> {

@@ -1,21 +1,3 @@
-interface Web3PaymentRequirement {
-    x402Version: number;
-    scheme: 'evm-erc20-transfer';
-    network: string;
-    chainId: number;
-    currency: string;
-    tokenAddress: string;
-    tokenDecimals: number;
-    amount: string;
-    payTo: string;
-    resource: string;
-    method: string;
-    tier: string;
-    paymentId?: string;
-    requestHash?: string;
-    minConfirmations?: number;
-    instructions: string;
-}
 export interface WatchTowerPaymentPolicy {
     /** Exact API origin that is allowed to request automatic settlement. */
     apiOrigin: string;
@@ -23,6 +5,8 @@ export interface WatchTowerPaymentPolicy {
     chainId: number;
     /** Exact ERC-20 contract accepted for automatic settlement. */
     tokenAddress: string;
+    /** Payment token decimals used to compare maxAmount against atomic x402 requirements. Default: 6. */
+    tokenDecimals?: number;
     /** Exact WatchTower treasury address accepted for automatic settlement. */
     treasuryAddress: string;
     /** Per-request ceiling, expressed in the configured token's display units. */
@@ -71,9 +55,7 @@ export interface WatchTowerConfig {
     threshold?: number;
     /** Optional default EVM chain id override. If omitted, WatchTower auto-detects the chain. */
     chainId?: string | number;
-    /** Optional settlement transaction hash to send as Authorization: L402 <tx_hash>. */
-    paymentTxHash?: string;
-    /** Optional agent payment private key. Enables automatic ERC-20 x402 settlement on 402 challenges. */
+    /** Optional agent payment private key. Enables automatic x402 PAYMENT-SIGNATURE creation on 402 challenges. */
     paymentPrivateKey?: `0x${string}` | string;
     /** Optional payment RPC override. Defaults to X Layer RPC for known WatchTower payment chains. */
     paymentRpcUrl?: string;
@@ -82,8 +64,7 @@ export interface WatchTowerConfig {
 }
 export interface WatchTowerRequestOptions {
     chainId?: string | number;
-    paymentTxHash?: string;
-    paymentId?: string;
+    paymentSignature?: string;
 }
 export declare class WatchTowerAbortError extends Error {
     threatScore: number;
@@ -93,8 +74,8 @@ export declare class WatchTowerAbortError extends Error {
     constructor(message: string, threatScore: number, confidence: number, reasoning: string[], scanHash: string);
 }
 export declare class WatchTowerPaymentRequiredError extends Error {
-    requirement: Web3PaymentRequirement;
-    constructor(requirement: Web3PaymentRequirement);
+    paymentRequired: unknown;
+    constructor(paymentRequired: unknown);
 }
 export declare class WatchTowerPaymentFundingError extends Error {
     constructor(message: string);
@@ -104,7 +85,6 @@ export declare class WatchTowerClient {
     private agentWallet;
     private threshold;
     private chainId;
-    private paymentTxHash;
     private paymentPrivateKey;
     private paymentRpcUrl;
     private paymentPolicy;
@@ -126,28 +106,30 @@ export declare class WatchTowerClient {
     private readPaymentRequirement;
     private retryPaidRequest;
     private getPaymentRpcUrl;
-    private settlePayment;
+    private createPaymentSignatureHeaders;
 }
 export interface DeepScanResponse {
     reportType: string;
     tier: string;
     price: string;
     generatedAt: string;
-    chainId: string;
-    chainResolution: {
+    target: {
+        tokenAddress: string;
         chainId: string;
-        chainName: string;
-        confidence: string;
-        source: string;
-        reason: string;
-        candidates: Array<{
+        chainResolution: {
             chainId: string;
-            name: string;
-            confidenceScore: number;
-            signals: string[];
-        }>;
+            chainName: string;
+            confidence: string;
+            source: string;
+            reason: string;
+            candidates: Array<{
+                chainId: string;
+                name: string;
+                confidenceScore: number;
+                signals: string[];
+            }>;
+        };
     };
-    tokenAddress: string;
     verdict: {
         threatScore: number;
         confidence: number;
@@ -171,5 +153,4 @@ export interface DeepScanResponse {
     };
     recommendations: string[];
 }
-export {};
 //# sourceMappingURL=index.d.ts.map

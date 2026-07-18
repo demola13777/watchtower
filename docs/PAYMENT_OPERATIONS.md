@@ -2,9 +2,9 @@
 
 ## Production Model
 
-WatchTower uses the self-hosted `evm-erc20-transfer` payment verifier as the V1 production model. The API creates a request-bound payment intent, verifies the mined ERC-20 transfer against the configured X Layer Mainnet RPC, and records the transaction hash as one-time-use before the scan proceeds.
+WatchTower uses standard x402 challenges with the OKX facilitator as the V1 production model. The API creates a request-bound challenge, accepts a signed `PAYMENT-SIGNATURE`, asks the facilitator to verify and settle on-chain, and records the settled payment before the scan proceeds.
 
-This is intentionally not a hosted facilitator dependency. `PaymentService` remains the replacement boundary if WatchTower adopts a standards-compatible facilitator or signed payment envelope later.
+`PaymentService` remains the replacement boundary if WatchTower changes facilitator providers or adds another x402 scheme later. Scan routes, MCP tools, telemetry, and report generation should continue to consume receipts from that boundary rather than implementing payment logic directly.
 
 ## Daily Reconciliation
 
@@ -15,13 +15,32 @@ npm run validate:mainnet
 npm run reconcile:payments
 ```
 
-`reconcile:payments` reads completed Mainnet payments from Turso and independently confirms a successful configured-token transfer to the configured treasury. It is read-only and exits non-zero on any discrepancy.
+`reconcile:payments` reads settled, processing, and completed Mainnet payments from Turso and independently checks the facilitator transaction recorded for each settlement. It is read-only and exits non-zero on any discrepancy.
+
+## Flow Inspection
+
+Use the read-only inspector when a treasury transfer, dashboard scan, or agent response looks inconsistent:
+
+```bash
+npm run inspect:payments -- --limit 20
+npm run inspect:payments -- --tx 0x...
+npm run inspect:payments -- --request-hash ...
+npm run inspect:payments -- --payer 0x...
+```
+
+Interpretation:
+
+- `pending` with no `payer` and no `settlement_tx_hash` is only a 402 challenge. It is not a treasury payment.
+- `settled` means the facilitator accepted and settled payment, but scan work has not completed yet.
+- `processing` means a worker/request is currently trying to produce the paid result.
+- `completed` means the paid response payload was persisted and safe retries can return it.
+- Matching `scans` rows confirm that the threat engine persisted the scan result.
 
 ## Customer Payment Handling
 
-1. Do not accept a transaction hash as payment unless it is paired with the original payment intent ID and request body.
-2. A transfer that reaches the treasury but cannot be associated with a valid, unexpired intent is not automatically credited.
-3. Support must first reconcile the transaction with `npm run reconcile:payments`, then confirm payer, token, amount, destination, and request metadata.
+1. Do not manually credit a payment from a transaction hash alone. A paid request must have a settled or completed row in `payments`.
+2. A transfer that reaches the treasury but cannot be associated with a valid x402 payment record is not automatically credited.
+3. Support must first reconcile the transaction with `npm run reconcile:payments`, then confirm payer, token, amount, destination, request hash, and response status.
 4. Approved refunds are sent manually from the treasury or multisig after a second operator verifies the recipient and amount. Record the original payment ID, refund transaction hash, approvers, and reason.
 5. Never request a private key, seed phrase, or wallet-connect signature from a customer as part of payment support.
 
@@ -35,4 +54,4 @@ RECORD_FIREWALL_SCANS=true
 
 ## Escalation
 
-Immediately pause paid routes if reconciliation detects a mismatch, the configured treasury changes unexpectedly, confirmation checks fail, or a used transaction hash appears associated with more than one request.
+Immediately pause paid routes if reconciliation detects a mismatch, facilitator verification starts failing unexpectedly, the configured treasury changes unexpectedly, or one settlement transaction appears associated with more than one request.

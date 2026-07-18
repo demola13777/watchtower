@@ -82,14 +82,14 @@ npx drizzle-kit generate
 
 ### Payment Reconciliation
 
-Verifies all completed payments against on-chain transaction receipts:
+Verifies settled, processing, and completed payments against on-chain settlement receipts:
 
 ```bash
 npm run reconcile:payments
 ```
 
 This script:
-1. Queries all `completed` payments on `X Layer Mainnet`
+1. Queries all settled payment states on the configured Mainnet x402 network
 2. Fetches each settlement transaction receipt from the RPC
 3. Verifies the ERC-20 Transfer event matches the expected amount and treasury
 4. Reports any mismatches
@@ -129,7 +129,7 @@ turso db shell watchtower "SELECT name, COUNT(*) as rows FROM (SELECT 'scans' as
 |-------|---------|-------------|-------------|
 | `scans` | Scan results and reports | `id` (auto-increment) | ~per scan |
 | `payments` | Payment intent lifecycle | `payment_id` (UUID) | ~per API request |
-| `used_payment_transactions` | Replay protection | `tx_hash` | ~per settled payment |
+| `used_payment_transactions` | Compatibility settlement ledger | `tx_hash` | ~per settled payment |
 | `agents` | Agent reputation tracking | `wallet` (address) | ~per unique agent |
 | `rate_limits` | Rate limit buckets | `id` (hash) | High, auto-pruned |
 
@@ -141,11 +141,11 @@ SELECT COUNT(*), status FROM payments
 WHERE created_at > (strftime('%s', 'now') - 3600) * 1000
 GROUP BY status;
 
--- Revenue (settled + completed payments)
-SELECT SUM(CAST(amount AS REAL)) as total_revenue
+-- Revenue in display units for 6-decimal USDT0 settlements
+SELECT SUM(CAST(amount AS REAL) / 1000000.0) as total_revenue
 FROM payments
 WHERE status IN ('settled', 'processing', 'completed')
-  AND network = 'X Layer Mainnet';
+  AND network IN ('eip155:196', 'X Layer Mainnet');
 
 -- Top agents by scan count
 SELECT wallet, total_scans, reckless_trades

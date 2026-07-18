@@ -6,6 +6,10 @@ import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDe
 import { ChainResolutionError, resolveScanChain, runDeepScan } from '@/lib/scan-service';
 import { scanRequestSchema } from '@/lib/validation';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 /**
  * POST /api/scan/deep
  * 
@@ -25,10 +29,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const { agentWallet: _agentWallet, ...paymentIdentityInput } = input;
+    void _agentWallet;
     const requestHash = createPaymentRequestHash({
       endpoint: '/api/scan/deep',
       tier: 'deep',
-      input,
+      input: paymentIdentityInput,
     });
     const payment = await requirePayment(req, SCAN_PRICING_USDT.deep, 'Tier 1 - Deep Scan', requestHash, { allowDemoBypass: true });
     if (!payment.ok) return paymentRequiredResponse(payment.failure);
@@ -40,10 +46,10 @@ export async function POST(req: Request) {
         return setPaymentResponseHeader(NextResponse.json(JSON.parse(claim.responsePayload)), payment.receipt);
       }
       if (claim.state === 'processing') {
-        return NextResponse.json(
+        return setPaymentResponseHeader(NextResponse.json(
           { error: 'Your paid scan is already processing. Retry this same request shortly.' },
           { status: 409, headers: { 'Retry-After': '2' } },
-        );
+        ), payment.receipt);
       }
       claimedPaymentId = payment.receipt.paymentId;
     }
