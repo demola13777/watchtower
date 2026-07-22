@@ -72,7 +72,8 @@ async function fetchDexScreener(address: string): Promise<DexScreenerResponse | 
       signal: timeoutSignal(DEXSCREENER_TIMEOUT_MS),
     });
     if (!res.ok) return null;
-    return (await res.json()) as DexScreenerResponse;
+    const data = (await res.json()) as DexScreenerResponse;
+    return data;
   } catch {
     return null;
   }
@@ -122,14 +123,15 @@ export async function resolveTokenChain(tokenAddress: string, explicitChainId?: 
 
   if (explicitChainId) {
     const chain = getChain(explicitChainId);
-    return {
+    const resolution = {
       chainId: explicitChainId,
       chainName: chain?.name ?? `Chain ${explicitChainId}`,
       confidence: 'explicit',
       source: 'explicit',
       candidates: chain ? [blankCandidate(chain)] : [],
       reason: 'Caller supplied chainId; auto-detection skipped.',
-    };
+    } satisfies ChainResolution;
+    return resolution;
   }
 
   const cached = cache.get(normalizedAddress);
@@ -199,14 +201,15 @@ export async function resolveTokenChain(tokenAddress: string, explicitChainId?: 
 
   if (ranked.length === 0) {
     const fallbackChain = getChain(DEFAULT_CHAIN_ID);
-    return {
+    const resolution = {
       chainId: DEFAULT_CHAIN_ID,
       chainName: fallbackChain?.name ?? `Chain ${DEFAULT_CHAIN_ID}`,
       confidence: 'fallback',
       source: 'fallback',
       candidates: [],
       reason: 'No chain-specific liquidity, bytecode, or security data was detected; using the configured fallback chain.',
-    };
+    } satisfies ChainResolution;
+    return resolution;
   }
 
   const [top, second] = ranked;

@@ -1,18 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, ChevronDown, Copy, Fingerprint, Network, Sparkles, Wallet } from "lucide-react";
-
-export interface AgentRelayPaymentRequirement {
-  network: string;
-  chainId: number;
-  currency: string;
-  tokenAddress: string;
-  tokenDecimals: number;
-  amount: string;
-  payTo: string;
-  tier: string;
-}
+import { Bot, Sparkles } from "lucide-react";
 
 const ACTIVE_HALO_MESSAGES = [
   { text: "Target detected. Agent Relay listening...", icon: <Bot className="h-3.5 w-3.5 text-cyan-400" /> },
@@ -20,43 +9,8 @@ const ACTIVE_HALO_MESSAGES = [
   { text: "Claude / MCP clients support single-flow execution", icon: <Sparkles className="h-3.5 w-3.5 text-amber-400" /> },
 ];
 
-function shorten(value: string): string {
-  if (value.length <= 18) return value;
-  return `${value.slice(0, 10)}...${value.slice(-6)}`;
-}
-
-function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string; }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(value).catch(() => null);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-slate-900/60 px-3 py-2.5 border border-slate-800/50">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400">
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
-          <div className="truncate font-mono text-xs text-slate-300" title={value}>{shorten(value)}</div>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800 text-slate-400 hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-cyan-300 transition-colors"
-      >
-        {copied ? <Sparkles className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-      </button>
-    </div>
-  );
-}
-
-export function AgentRelayPanel({ requirement }: { requirement?: AgentRelayPaymentRequirement }) {
+export function AgentRelayPanel() {
   const [messageIndex, setMessageIndex] = useState(0);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -117,42 +71,6 @@ export function AgentRelayPanel({ requirement }: { requirement?: AgentRelayPayme
                 </span>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Right: Manual Override Toggle */}
-        <button
-          onClick={() => setDetailsOpen(!detailsOpen)}
-          className={`flex-none flex items-center gap-1.5 pl-3 sm:pl-4 border-l border-slate-800 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors ${
-            requirement ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-400'
-          }`}
-        >
-          <span className="hidden sm:inline">Payment Details</span>
-          <span className="sm:hidden">Details</span>
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-500 ease-[cubic-bezier(0.87,0,0.13,1)] ${detailsOpen ? 'rotate-180 text-cyan-400' : ''}`} />
-        </button>
-      </div>
-
-      {/* Manual Payment Details Dropdown */}
-      <div 
-        className={`grid transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)] relative z-0 ${
-          detailsOpen ? 'grid-rows-[1fr] opacity-100 -mt-2' : 'grid-rows-[0fr] opacity-0 -mt-8 pointer-events-none'
-        }`}
-      >
-        <div className="overflow-hidden">
-          <div className="pt-5 pb-1 px-1">
-            {requirement ? (
-                <div className="grid gap-2 sm:grid-cols-2 rounded-2xl border border-slate-800/80 bg-slate-900/50 p-2 sm:p-3 shadow-inner">
-                  <DetailRow icon={<Wallet className="h-3.5 w-3.5" />} label="Amount" value={`${requirement.amount} ${requirement.currency}`} />
-                  <DetailRow icon={<Network className="h-3.5 w-3.5" />} label="Chain" value={`${requirement.network} (${requirement.chainId})`} />
-                  <DetailRow icon={<Fingerprint className="h-3.5 w-3.5" />} label="Token Contract" value={requirement.tokenAddress} />
-                  <DetailRow icon={<Wallet className="h-3.5 w-3.5" />} label="Treasury" value={requirement.payTo} />
-                </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4 text-xs text-slate-500">
-                Run a scan to generate a live x402 payment challenge. No placeholder invoice is shown.
-              </div>
-            )}
           </div>
         </div>
       </div>

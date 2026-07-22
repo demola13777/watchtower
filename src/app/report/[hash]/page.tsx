@@ -50,7 +50,7 @@ interface ReportModule {
   status: 'active' | 'unavailable' | 'coming_soon';
 }
 
-interface DeepScanReportView {
+interface AuthorizationReportView {
   generatedAt: string;
   chainId?: string;
   tokenAddress?: string;
@@ -67,9 +67,19 @@ interface DeepScanReportView {
   intelligenceModules: ReportModule[];
   recommendations: string[];
   verification?: {
+    analysisHash?: string;
     scanHash?: string;
+    reportHash?: string;
+    permitHash?: string | null;
     txHash?: string | null;
+    attestationStatus?: 'pending' | 'confirmed' | 'failed' | 'not_applicable';
   };
+  attestation?: {
+    status?: 'pending' | 'confirmed' | 'failed';
+    permitHash?: string;
+    txHash?: string | null;
+    reason?: string;
+  } | null;
 }
 
 export default async function ReportPage({ params }: { params: Promise<{ hash: string }> }) {
@@ -89,9 +99,9 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
   }
 
   // M5: Safe JSON parsing
-  let report: DeepScanReportView;
+  let report: AuthorizationReportView;
   try {
-    report = JSON.parse(scan.reportData) as DeepScanReportView;
+    report = JSON.parse(scan.reportData) as AuthorizationReportView;
   } catch {
     return notFound();
   }
@@ -105,6 +115,9 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
   // C6: Determine if we have a real on-chain transaction hash
   const txHash = report.verification?.txHash || scan.txHash;
   const hasOnChainProof = !!txHash;
+  const attestationStatus = hasOnChainProof
+    ? 'confirmed'
+    : report.attestation?.status ?? report.verification?.attestationStatus;
 
   const getModuleIcon = (name: string) => {
     if (name.includes('Liquidity')) return <Activity className="h-4 w-4 text-cyan-400" />;
@@ -303,7 +316,7 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
           {/* Cryptographic Footer */}
           <footer className="animate-fade-in-up delay-400 flex-none relative z-10">
             <div className="p-3 sm:p-4 rounded-2xl bg-slate-900/40 backdrop-blur-md border border-slate-700/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs font-mono transition-all transform-gpu">
-              <div className={`flex items-center gap-2 ${hasOnChainProof ? 'text-emerald-400' : 'text-slate-400'}`}>
+	              <div className={`flex items-center gap-2 ${hasOnChainProof ? 'text-emerald-400' : attestationStatus === 'pending' ? 'text-amber-400' : 'text-slate-400'}`}>
                 {hasOnChainProof ? (
                   <div className="relative flex h-2.5 w-2.5 items-center justify-center">
                     {/* Fix for blink artifact: reduced spread, removed absolute ping overlapping container bounds */}
@@ -312,7 +325,15 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
                 ) : (
                   <Shield className="h-3.5 w-3.5" />
                 )}
-                <span className="tracking-wide font-semibold">{hasOnChainProof ? 'Verified On-Chain Attestation' : 'Onchain Attestation: Offline'}</span>
+	                <span className="tracking-wide font-semibold">
+                    {hasOnChainProof
+                      ? 'Verified On-Chain Attestation'
+                      : attestationStatus === 'pending'
+                        ? 'On-Chain Attestation Pending'
+                        : attestationStatus === 'failed'
+                          ? 'On-Chain Attestation Failed'
+                          : 'On-Chain Attestation Not Available'}
+                  </span>
               </div>
               {hasOnChainProof ? (
                 <a 
@@ -329,8 +350,8 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
               ) : (
                 <div className="flex items-center gap-2 text-slate-400 bg-slate-950/90 px-4 py-2 rounded-lg border border-slate-800">
                   <Fingerprint className="h-3 w-3 opacity-50" />
-                  <span className="hidden sm:inline text-slate-500 tracking-widest text-[10px]">HASH</span>
-                  <span className="truncate max-w-[200px] sm:max-w-none font-medium">{report.verification?.scanHash || hash}</span>
+                  <span className="hidden sm:inline text-slate-500 tracking-widest text-[10px]">REPORT</span>
+                  <span className="truncate max-w-[200px] sm:max-w-none font-medium">{report.verification?.reportHash || hash}</span>
                 </div>
               )}
             </div>

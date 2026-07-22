@@ -64,7 +64,6 @@ interface LeaderboardAgent {
 interface TelemetryData {
   totalScans: number;
   threatsBlocked: number;
-  revenue: number;
   activeAgents: number;
   latestScans: TelemetryScan[];
   leaderboard: LeaderboardAgent[];
@@ -92,7 +91,7 @@ interface ScanResult {
   };
 }
 
-interface DeepScanApiResult {
+interface AuthorizationApiResult {
   target?: {
     tokenAddress?: string;
     chainId?: string;
@@ -103,7 +102,7 @@ interface DeepScanApiResult {
 }
 
 function normalizeScanResult(value: unknown): ScanResult | null {
-  const result = value as DeepScanApiResult;
+  const result = value as AuthorizationApiResult;
   if (!result?.target?.tokenAddress || !result.target.chainId || !result.target.chainResolution || !result.verdict || !result.verification?.scanHash) {
     return null;
   }
@@ -244,7 +243,7 @@ export default function NetworkDashboard() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">Scan a Token</h2>
-              <p className="text-xs text-slate-500">Paste any EVM token contract address to auto-detect its chain and run a deep threat analysis</p>
+              <p className="text-xs text-slate-500">Paste any EVM token contract address to auto-detect its chain and run a threat analysis</p>
             </div>
           </div>
 
@@ -341,7 +340,7 @@ export default function NetworkDashboard() {
                   href={`/report/${scanResult.verification.scanHash}`}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-sm font-medium hover:bg-cyan-500/20 transition-all group"
                 >
-                  View Full Report
+                  View Report
                   <ExternalLink className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </Link>
               </div>
@@ -359,7 +358,7 @@ export default function NetworkDashboard() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-fade-in-up delay-200">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in-up delay-200">
           <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-cyan-500/30 hover:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-all">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex items-center justify-between mb-4">
@@ -380,17 +379,6 @@ export default function NetworkDashboard() {
             </div>
             <div className="text-sm text-slate-500 font-medium mb-1">Threats Blocked</div>
             <div className="text-3xl font-black text-rose-500">{telemetry?.threatsBlocked || 0}</div>
-          </div>
-
-          <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-emerald-500/30 hover:shadow-[0_4px_20px_rgba(16,185,129,0.1)] transition-all">
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="flex items-center justify-between mb-4">
-              <div className="h-10 w-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center">
-                <Zap className="h-5 w-5 text-emerald-400" />
-              </div>
-            </div>
-            <div className="text-sm text-slate-500 font-medium mb-1">x402 Revenue (USDT)</div>
-            <div className="text-3xl font-black text-emerald-400">{telemetry?.revenue?.toFixed(2) || "0.00"}</div>
           </div>
 
           <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-700/50 backdrop-blur-md relative overflow-hidden group hover:border-purple-500/30 hover:shadow-[0_4px_20px_rgba(168,85,247,0.1)] transition-all">
@@ -477,7 +465,7 @@ export default function NetworkDashboard() {
                    <div className="md:col-span-1">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Tier</div>
                       <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${scan.agentWallet === 'web_dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : scan.tier === 'deep' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
-                        {scan.agentWallet === 'web_dashboard' ? 'Free' : scan.tier === 'deep' ? 'Deep' : 'API'}
+                        {scan.agentWallet === 'web_dashboard' ? 'Free' : scan.tier === 'deep' ? 'Auth' : 'Firewall'}
                       </span>
                    </div>
                    
@@ -494,7 +482,7 @@ export default function NetworkDashboard() {
            {(telemetry?.latestScans?.length ?? 0) > 0 && (
              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-4 px-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl">
                <div className="flex items-center gap-2 text-sm text-slate-400">
-                 <span>Show:</span>
+                <span>Show:</span>
                  <select 
                    className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
                    value={pageSize}

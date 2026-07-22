@@ -8,7 +8,7 @@
  *   - Malformed/missing PAYMENT-SIGNATURE returns 402 (not crash)
  */
 
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
+const API_URL = process.env.WATCHTOWER_API_URL || 'https://watchtowr.xyz';
 const SCAN_URL = `${API_URL}/api/scan`;
 const DEEP_SCAN_URL = `${API_URL}/api/scan/deep`;
 const TOKEN = process.env.PAYMENT_TEST_TOKEN || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';

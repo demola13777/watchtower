@@ -32,12 +32,22 @@ export interface AgentDecision {
   chainName?: string;
   /** Timestamp of the decision */
   timestamp: string;
-  /** Watch Tower report URL (deep scan only) */
+  /** Watch Tower authorization report URL */
   reportUrl?: string;
-  /** On-chain scan hash */
+  /** Threat-analysis content hash */
   scanHash?: string;
+  /** Public report lookup hash */
+  reportHash?: string;
+  /** Execution Permit id, when one was issued */
+  executionPermitId?: string;
+  /** Execution Permit hash, when one was issued */
+  permitHash?: string | null;
+  /** X Layer transaction hash, when available */
+  txHash?: string | null;
+  /** Audit-plane attestation lifecycle, when an Execution Permit was issued */
+  attestationStatus?: 'pending' | 'confirmed' | 'failed' | null;
   /** Which scan tier was used */
-  scanMode?: 'firewall' | 'deep';
+  scanMode?: 'firewall' | 'deep' | 'authorize';
 }
 
 /** A market opportunity that triggers the agent workflow */
@@ -54,4 +64,70 @@ export interface MemoryEntry {
   watchTowerScore: number;
   timestamp: string;
   reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Execution Authorization Types
+// ---------------------------------------------------------------------------
+
+/** Authorization decision from WatchTower */
+export type AuthorizationDecision = 'AUTHORIZED' | 'REVIEW_REQUIRED' | 'DENIED';
+
+/** The Execution Authorization credential */
+export interface ExecutionAuthorization {
+  id: string;
+  action: string;
+  tokenAddress: string;
+  chainId: string;
+  agentWallet: string;
+  executionHash: `0x${string}`;
+  amountUsd?: string;
+  recipient?: string;
+  spender?: string;
+  calldataHash?: `0x${string}`;
+  riskScore: number;
+  issuedAt: string;
+  expiresAt: string;
+  signerAddress: string;
+  domain: {
+    name: 'WatchTower';
+    version: '1';
+    chainId: number;
+    verifyingContract: `0x${string}`;
+  };
+  signature: `0x${string}`;
+}
+
+/** Signature verification result */
+export interface AuthorizationVerification {
+  signatureValid: boolean;
+  expired: boolean;
+  authorized: boolean;
+  signerAddress: string | null;
+}
+
+/** Full authorization response from WatchTower */
+export interface AuthorizationResult {
+  decision: AuthorizationDecision;
+  verdict: 'EXECUTE' | 'REVIEW' | 'ABORT';
+  riskScore: number;
+  confidence: number;
+  reasoning: string[];
+  authorization: ExecutionAuthorization | null;
+  verification?: AuthorizationVerification | null;
+  executable?: boolean;
+  scan?: {
+    analysisHash?: string;
+    scanHash: string;
+    reportHash?: string;
+    permitHash?: string | null;
+    reportUrl: string;
+  };
+  attestation: {
+    status?: 'pending' | 'confirmed' | 'failed';
+    permitHash: string;
+    txHash?: string | null;
+    chain?: string;
+    reason?: string;
+  } | null;
 }

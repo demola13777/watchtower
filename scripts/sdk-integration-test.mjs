@@ -12,7 +12,7 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
+const API_URL = process.env.WATCHTOWER_API_URL || 'https://watchtowr.xyz';
 const AGENT_WALLET = '0x0000000000000000000000000000000000000042';
 
 function assert(condition, message) {
@@ -57,8 +57,8 @@ async function testGuardTransactionRequiresPayment() {
   }
 }
 
-async function testDeepScanRequiresPayment() {
-  console.log('2. deepScan() should throw WatchTowerPaymentRequiredError without a payment key');
+async function testAuthorizationCompatibilityRequiresPayment() {
+  console.log('2. deepScan() compatibility alias should throw WatchTowerPaymentRequiredError without a payment key');
 
   const client = new WatchTowerClient({
     apiUrl: API_URL,
@@ -70,8 +70,8 @@ async function testDeepScanRequiresPayment() {
     throw new Error('Expected deepScan to throw, but it succeeded.');
   } catch (err) {
     if (err instanceof WatchTowerPaymentRequiredError) {
-      assert(err.requirement.amount, 'Deep scan requirement should include an amount');
-      console.log(`   ✅ Received deep scan payment requirement: ${err.requirement.amount} ${err.requirement.currency}`);
+      assert(err.requirement.amount, 'Authorization compatibility requirement should include an amount');
+      console.log(`   ✅ Received Authorization compatibility payment requirement: ${err.requirement.amount} ${err.requirement.currency}`);
     } else {
       throw err;
     }
@@ -109,7 +109,7 @@ console.log(`SDK Integration Test — ${API_URL}\n`);
 try {
   await testHealthEndpoint();
   await testGuardTransactionRequiresPayment();
-  await testDeepScanRequiresPayment();
+  await testAuthorizationCompatibilityRequiresPayment();
   await testInvalidAddressRejected();
   console.log('\n✅ All SDK integration tests passed.');
 } catch (err) {

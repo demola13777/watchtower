@@ -7,7 +7,6 @@ import {
   ArrowRight,
   BookOpen,
   Code2,
-  Database,
   ExternalLink,
   GitBranch,
   Network,
@@ -21,7 +20,7 @@ const GITHUB_URL = "https://github.com/demola13777/watchtower";
 
 export const metadata: Metadata = {
   title: "Developer Docs",
-  description: "Integrate WatchTower threat intelligence through the SDK, REST API, MCP tools, and x402-style payment flow.",
+  description: "Integrate WatchTower pre-execution security through the SDK, REST API, MCP tools, and x402 payment flow.",
 };
 
 const sections = [
@@ -30,8 +29,7 @@ const sections = [
   { id: "mcp", label: "MCP" },
   { id: "api", label: "REST API" },
   { id: "payments", label: "Payments" },
-  { id: "attestations", label: "Attestations" },
-  { id: "deploy", label: "Deploy" },
+  { id: "attestations", label: "Reports" },
 ];
 
 function Section({
@@ -121,7 +119,7 @@ export default function DocsPage() {
               Put production-grade security in front of every autonomous trade.
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-slate-400 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-              WatchTower is an agent-native threat-intelligence layer for X Layer Mainnet: integrate it through the SDK, MCP, or REST, then expose verified receipts when operators need an audit trail.
+              WatchTower gives agents a simple execution gate: run the threat engine, evaluate policy, verify the signed permit, then execute only when Authorization passes.
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row animate-in fade-in slide-in-from-bottom-5 duration-1000">
               <Link href="/#integrate" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-6 py-3.5 text-sm font-bold text-white shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] hover:-translate-y-0.5">
@@ -135,23 +133,43 @@ export default function DocsPage() {
 
           <Section id="quickstart" icon={<Terminal className="h-4 w-4" />} title="Quickstart">
             <p>
-              Install the app dependencies, configure the environment, and start the local server. The public dashboard is useful for demos, but agent integrations should call the SDK, MCP tools, or REST API directly.
+              Use the SDK when WatchTower sits inside your agent runtime. The default client already knows the trusted WatchTower signer and permit domain, so normal integrations do not need custom trust configuration.
             </p>
-            <CodeBlock language="bash">{`npm install
-cd packages/watchtower-sdk && npm install && npm run build
-cd ../..
-cp .env.example .env.local
-npm run dev`}</CodeBlock>
+            <CodeBlock language="bash">{`npm install okx-watchtower-middleware`}</CodeBlock>
+            <CodeBlock language="ts">{`import { WatchTowerClient, WatchTowerPaymentRequiredError } from "okx-watchtower-middleware";
+
+const wt = new WatchTowerClient({
+  apiUrl: "https://watchtowr.xyz",
+  agentWallet: "0xYourAgentWallet",
+  chainId: 196,
+});
+
+try {
+  const authorization = await wt.authorize({
+    action: "swap",
+    token: "0xTokenAddress",
+  });
+
+  if (!authorization.executable) {
+    throw new Error(\`Execution blocked: \${authorization.decision}\`);
+  }
+
+  await executeTrade();
+} catch (error) {
+  if (error instanceof WatchTowerPaymentRequiredError) {
+    console.log(error.paymentRequired);
+  }
+}`}</CodeBlock>
             <p>
-              Open <InlineCode>http://localhost:3000</InlineCode> for the homepage, <InlineCode>/network</InlineCode> for the public scan feed, and <InlineCode>/verify</InlineCode> for attestation checks.
+              For production agents, add the payment configuration below or retry with a wallet-provided payment signature. For a local demo, run the app, use <InlineCode>/network</InlineCode> to generate a free token report, or open <InlineCode>/verify</InlineCode> to inspect a confirmed registry transaction.
             </p>
           </Section>
 
           <Section id="sdk" icon={<Code2 className="h-4 w-4" />} title="SDK Integration">
             <p>
-              Use the SDK when WatchTower is embedded inside a trading bot or autonomous agent runtime. The homepage SDK panel is the fast path; this docs page explains what happens around it.
+              <InlineCode>authorize()</InlineCode> is the premium Permission to Execute flow. It runs full threat intelligence, evaluates policy, and only returns <InlineCode>executable: true</InlineCode> after the signed permit verifies locally.
             </p>
-            <CodeBlock language="ts">{`import { WatchTowerClient, WatchTowerAbortError } from "okx-watchtower-middleware";
+            <CodeBlock language="ts">{`import { WatchTowerClient, WatchTowerAuthorizationError } from "okx-watchtower-middleware";
 
 const wt = new WatchTowerClient({
   apiUrl: "https://watchtowr.xyz",
@@ -170,21 +188,31 @@ const wt = new WatchTowerClient({
 });
 
 try {
-  const intel = await wt.guardTransaction("0xTokenAddress");
-  console.log(intel.recommendation, intel.threatScore);
+  const authorization = await wt.authorize({
+    action: "swap",
+    token: "0xTokenAddress",
+    amountUsd: 250,
+  });
+
+  if (!authorization.executable) {
+    console.log("Trade blocked", authorization.decision);
+    return;
+  }
+
+  await executeTrade();
 } catch (error) {
-  if (error instanceof WatchTowerAbortError) {
-    console.log("Trade blocked", error.reasoning);
+  if (error instanceof WatchTowerAuthorizationError) {
+    console.log("Permit verification failed", error.message);
   }
 }`}</CodeBlock>
             <p>
-              Configure <InlineCode>paymentPrivateKey</InlineCode> only in a secure agent runtime. Automatic x402 signing also requires a <InlineCode>paymentPolicy</InlineCode> that pins the API origin, chain, token, decimals, treasury, and maximum amount. Without a key, the SDK raises a payment-required error with the challenge details.
+              Configure <InlineCode>paymentPrivateKey</InlineCode> only inside a secure agent runtime. Automatic x402 signing also requires a <InlineCode>paymentPolicy</InlineCode> that pins the API origin, chain, token, treasury, and maximum amount. Without a key, the SDK returns the payment challenge so your wallet flow can sign it.
             </p>
           </Section>
 
           <Section id="mcp" icon={<Network className="h-4 w-4" />} title="MCP Tools">
             <p>
-              MCP lets local AI agents discover WatchTower as a tool provider. The endpoint is Streamable HTTP and exposes the same scan engine as REST.
+              MCP lets local AI agents discover WatchTower as a protected tool provider. The endpoint is Streamable HTTP and uses the same payment, validation, chain-resolution, and Authorization logic as REST.
             </p>
             <CodeBlock language="json">{`{
   "mcpServers": {
@@ -194,71 +222,51 @@ try {
   }
 }`}</CodeBlock>
             <p>
-              Tools: <InlineCode>scan_token</InlineCode> for Tier 2 firewall scans and <InlineCode>deep_scan_token</InlineCode> for detailed reports. Paid tool calls use the same payment boundary as REST.
+              Tools: <InlineCode>scan_token</InlineCode> for Firewall, <InlineCode>authorize_transaction</InlineCode> for Authorization, and <InlineCode>deep_scan_token</InlineCode> as a compatibility alias for existing Marketplace integrations.
             </p>
           </Section>
 
           <Section id="api" icon={<Activity className="h-4 w-4" />} title="REST API">
             <p>
-              REST integrations are useful for services that do not need the SDK package. Both scan routes validate the request body before payment validation, so bad inputs do not consume a valid settlement transaction.
+              REST is useful when you do not want the SDK package. Inputs are validated before payment, so malformed requests do not consume a valid settlement.
             </p>
-            <CodeBlock language="ts">{`POST /api/scan       // Tier 2, 0.5 USDT
-POST /api/scan/deep  // Tier 1, 1 USDT
+            <CodeBlock language="ts">{`POST /api/scan       // Firewall, 0.5 USDT
+POST /api/authorize   // Authorization, 1 USDT
+POST /api/scan/deep   // compatibility alias
 
 {
   "tokenAddress": "0x...",
   "chainId": "196",
-  "agentWallet": "0x..."
+  "agentWallet": "0x...",
+  "action": "swap"
 }`}</CodeBlock>
             <p>
-              <InlineCode>chainId</InlineCode> is strongly recommended. If omitted, WatchTower attempts chain resolution and falls back to the configured X Layer default.
+              <InlineCode>chainId</InlineCode> is strongly recommended. If omitted, WatchTower attempts chain resolution and rejects ambiguous results before payment.
             </p>
           </Section>
 
           <Section id="payments" icon={<Wallet className="h-4 w-4" />} title="Payments">
             <p>
-              WatchTower uses the standard x402 payment protocol with the OKX facilitator for machine payments. Protected endpoints return <InlineCode>402 Payment Required</InlineCode> with a <InlineCode>PAYMENT-REQUIRED</InlineCode> challenge.
+              WatchTower uses x402 with the OKX facilitator for machine payments. Protected endpoints return <InlineCode>402 Payment Required</InlineCode> with a <InlineCode>PAYMENT-REQUIRED</InlineCode> challenge.
             </p>
             <CodeBlock language="bash">{`PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>`}</CodeBlock>
             <p>
-              The SDK creates the signed payment payload, then WatchTower asks the OKX facilitator to verify the signature and settle the transfer on-chain. Completed facilitator settlements are recorded before the scan runs so Command Center revenue reflects accepted payments even if a report step needs a retry.
+              The SDK can reuse the signed payment payload during retries. WatchTower records confirmed facilitator settlements before service delivery, and failed service delivery releases the payment back into a recoverable state.
             </p>
           </Section>
 
           <Section id="attestations" icon={<Shield className="h-4 w-4" />} title="Reports and Attestations">
             <p>
-              Deep scans generate public reports at <InlineCode>/report/[scanHash]</InlineCode>. The scan hash is deterministic over core inputs, not raw JSON serialization.
+              Execution Authorization generates public reports at <InlineCode>/report/[reportHash]</InlineCode>. The response also exposes the threat-analysis hash, the permit hash when a permit is issued, and an attestation status so developers can tell each artifact apart.
             </p>
-            <CodeBlock language="ts">{`sha256(chainId:tokenAddress:threatScore:confidence:timestamp)`}</CodeBlock>
+            <CodeBlock language="ts">{`analysisHash // threat-analysis content hash, legacy scanHash alias
+permitHash   // signed Execution Permit hash, only when a permit is issued
+reportHash   // public /report/[reportHash] lookup key
+attestation.status // pending | confirmed | failed`}</CodeBlock>
             <p>
-              The deployed registry is selected entirely through environment configuration. Use <Link href="/verify" className="text-cyan-400 hover:text-cyan-300 underline decoration-cyan-500/30 underline-offset-4">/verify</Link> to decode a configured X Layer registry transaction and confirm the emitted scan event.
+              Authorization is returned as soon as the Execution Permit verifies locally. X Layer anchoring runs as audit work, and <Link href="/verify" className="text-cyan-400 hover:text-cyan-300 underline decoration-cyan-500/30 underline-offset-4">/verify</Link> can decode a confirmed registry transaction when one is available.
             </p>
           </Section>
-
-          <Section id="deploy" icon={<Database className="h-4 w-4" />} title="Deployment">
-            <p>
-              Local development may use SQLite. A mainnet deployment uses Turso/libSQL, a dedicated X Layer RPC, an explicit registry address, and production secret management.
-            </p>
-            <CodeBlock language="bash">{`NEXT_PUBLIC_SITE_URL=https://watchtowr.xyz
-TURSO_DATABASE_URL=libsql://...
-TURSO_AUTH_TOKEN=...
-NEXT_PUBLIC_REGISTRY_ADDRESS=0x...
-NEXT_PUBLIC_REGISTRY_CHAIN_ID=196
-NEXT_PUBLIC_REGISTRY_RPC_URL=https://rpc.xlayer.tech
-NEXT_PUBLIC_NETWORK_ENV=mainnet
-MAINNET_RPC_URL=https://your-dedicated-x-layer-rpc
-MAINNET_TREASURY_ADDRESS=0x...
-MAINNET_USDT_ADDRESS=0x...
-MAINNET_PAYMENT_TOKEN_DECIMALS=6
-OKX_API_KEY=...
-OKX_SECRET_KEY=...
-OKX_PASSPHRASE=...`}</CodeBlock>
-            <p>
-              Keep <InlineCode>PRIVATE_KEY</InlineCode> out of public repos. Before public mainnet traffic, use managed custody, a relayer, or KMS-backed signing for the registry writer and complete the mainnet readiness checklist in this repository.
-            </p>
-          </Section>
-
-
 
           <div className="flex flex-col gap-4 border-t border-slate-800/60 py-12 sm:flex-row">
             <Link href="/#integrate" className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-slate-800 border border-slate-800">

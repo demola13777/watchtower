@@ -11,7 +11,7 @@
   "keywords": ["watchtower", "security", "agents", "x402", "xlayer", "okx"],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "@okxweb3/x402-core": "~0.1.0",
     "@okxweb3/x402-evm": "^0.2.1",

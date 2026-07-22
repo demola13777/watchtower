@@ -2,7 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { createWatchTowerMcpServer } from './mcp-server';
 import { SCAN_PRICING_USDT } from '@/lib/config';
 import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader, type PaymentReceipt } from '@/lib/payment';
-import { scanRequestSchema } from '@/lib/validation';
+import { scanRequestSchema, authorizeRequestSchema } from '@/lib/validation';
 import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 
@@ -20,8 +20,8 @@ import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 // Force Node.js runtime (not Edge) for SQLite/viem compatibility
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// Deep scans perform on-chain attestation which can take 15-30s.
-// Default Vercel timeout (10s) is too short — raise to 60s.
+// Authorization returns after permit verification; non-blocking audit work can
+// continue through the route duration when scheduled by Next.js after().
 export const maxDuration = 60;
 
 type JsonRpcToolCall = {
@@ -32,6 +32,33 @@ type JsonRpcToolCall = {
     arguments?: unknown;
   };
 };
+
+function getMcpToolFailureReason(responsePayload: string): string | null {
+  try {
+    const parsed = JSON.parse(responsePayload) as {
+      error?: { message?: string };
+      result?: {
+        isError?: boolean;
+        content?: Array<{ type?: string; text?: string }>;
+      };
+    };
+
+    if (parsed.error?.message) return parsed.error.message;
+    if (!parsed.result?.isError) return null;
+
+    const text = parsed.result.content?.find((item) => item.type === 'text')?.text;
+    if (!text) return 'MCP tool returned an error result.';
+
+    try {
+      const parsedText = JSON.parse(text) as { error?: string };
+      return parsedText.error || text;
+    } catch {
+      return text;
+    }
+  } catch {
+    return null;
+  }
+}
 
 function paymentHashArguments(argumentsValue: unknown): unknown {
   if (!argumentsValue || typeof argumentsValue !== 'object' || Array.isArray(argumentsValue)) {
@@ -48,7 +75,9 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
   const paidToolCalls = calls.filter((call) => call.method === 'tools/call');
   const toolNames = paidToolCalls.map((call) => call.params?.name);
 
-  if (toolNames.length === 0) return {};
+  if (toolNames.length === 0) {
+    return {};
+  }
   if (paidToolCalls.length > 1) {
     return {
       response: new Response(
@@ -66,8 +95,9 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
   }
 
   for (const call of paidToolCalls) {
-    if (call.params?.name !== 'scan_token' && call.params?.name !== 'deep_scan_token') continue;
-    const parsed = scanRequestSchema.safeParse(call.params.arguments ?? {});
+    if (call.params?.name !== 'scan_token' && call.params?.name !== 'deep_scan_token' && call.params?.name !== 'authorize_transaction') continue;
+    const schema = call.params?.name === 'authorize_transaction' ? authorizeRequestSchema : scanRequestSchema;
+    const parsed = schema.safeParse(call.params.arguments ?? {});
     if (!parsed.success) {
       return {
         response: new Response(
@@ -104,7 +134,7 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
     }
   }
 
-  const requiresDeepScan = toolNames.includes('deep_scan_token');
+  const requiresAuthorization = toolNames.includes('deep_scan_token') || toolNames.includes('authorize_transaction');
   const requestHash = createPaymentRequestHash({
     endpoint: '/api/mcp',
     tools: paidToolCalls
@@ -115,15 +145,17 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
   });
   const payment = await requirePayment(
     req,
-    requiresDeepScan ? SCAN_PRICING_USDT.deep : SCAN_PRICING_USDT.firewall,
-    requiresDeepScan ? 'Tier 1 - Deep Scan' : 'Tier 2 - API Firewall',
+    requiresAuthorization ? SCAN_PRICING_USDT.deep : SCAN_PRICING_USDT.firewall,
+    requiresAuthorization ? 'Execution Authorization' : 'Firewall Scan',
     requestHash,
     { allowDemoBypass: true },
   );
 
-  return payment.ok
-    ? { receipt: payment.receipt }
-    : { response: paymentRequiredResponse(payment.failure) };
+  if (payment.ok) {
+    return { receipt: payment.receipt };
+  }
+
+  return { response: paymentRequiredResponse(payment.failure) };
 }
 
 // Instantiate a new MCP server for each request.
@@ -138,30 +170,33 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const paymentResult = await requireMcpToolPayment(req);
-    if (paymentResult.response) return paymentResult.response;
+    if (paymentResult.response) {
+      return paymentResult.response;
+    }
 
     // Create a new server instance per request.
     // In stateless HTTP, the transport is unique to the request,
     // and an MCP server can only connect to one transport at a time.
     // Claim payment processing — skip DB operations for demo receipts
-    if (paymentResult.receipt && !isDemoReceipt(paymentResult.receipt)) {
-      const claim = await claimPaymentProcessing(paymentResult.receipt.paymentId);
+    const receipt = paymentResult.receipt;
+    if (receipt && !isDemoReceipt(receipt)) {
+      const claim = await claimPaymentProcessing(receipt.paymentId);
       if (claim.state === 'completed') {
         return setPaymentResponseHeader(
           new Response(claim.responsePayload, { headers: { 'Content-Type': 'application/json' } }),
-          paymentResult.receipt,
+          receipt,
         );
       }
       if (claim.state === 'processing') {
         return setPaymentResponseHeader(new Response(
           JSON.stringify({ jsonrpc: '2.0', error: { code: -32009, message: 'Your paid tool call is already processing. Retry shortly.' }, id: null }),
           { status: 409, headers: { 'Content-Type': 'application/json', 'Retry-After': '2' } },
-        ), paymentResult.receipt);
+        ), receipt);
       }
-      claimedPaymentId = paymentResult.receipt.paymentId;
+      claimedPaymentId = receipt.paymentId;
     }
 
-    const server = createWatchTowerMcpServer(paymentResult.receipt?.payer);
+    const server = createWatchTowerMcpServer(receipt?.payer);
 
     // Create a stateless transport for this request
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -176,14 +211,25 @@ export async function POST(req: Request): Promise<Response> {
     // Clean up
     await server.close();
 
-    if (!paymentResult.receipt) return response;
+    if (!receipt) {
+      return response;
+    }
 
     // Complete payment — skip DB write for demo receipts
-    if (!isDemoReceipt(paymentResult.receipt)) {
+    if (!isDemoReceipt(receipt)) {
       const responsePayload = await response.clone().text();
-      await completePayment(paymentResult.receipt.paymentId, responsePayload);
+      if (!response.ok) {
+        await releasePaymentProcessing(receipt.paymentId, `MCP tool returned HTTP ${response.status}.`);
+        return setPaymentResponseHeader(response, receipt);
+      }
+      const toolFailureReason = getMcpToolFailureReason(responsePayload);
+      if (toolFailureReason) {
+        await releasePaymentProcessing(receipt.paymentId, toolFailureReason);
+        return setPaymentResponseHeader(response, receipt);
+      }
+      await completePayment(receipt.paymentId, responsePayload);
     }
-    return setPaymentResponseHeader(response, paymentResult.receipt);
+    return setPaymentResponseHeader(response, receipt);
   } catch (error: unknown) {
     if (claimedPaymentId) {
       await releasePaymentProcessing(claimedPaymentId, error instanceof Error ? error.message : 'MCP tool processing failed.').catch(() => undefined);

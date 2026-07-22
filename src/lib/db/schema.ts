@@ -9,8 +9,8 @@ export const scans = sqliteTable('scans', {
   scanHash: text('scan_hash').notNull().unique(), // H8: Unique constraint
   txHash: text('tx_hash'),                        // C6: Separate on-chain tx hash
   agentWallet: text('agent_wallet'),               // Optional, who requested the scan
-  tier: text('tier').default('firewall'),           // 'firewall' (0.5 USDT) or 'deep' (1 USDT)
-  reportData: text('report_data'),                 // Stores full stringified deep scan JSON
+  tier: text('tier').default('firewall'),           // 'firewall' (0.5 USDT) or legacy 'deep' (1 USDT authorization)
+  reportData: text('report_data'),                 // Stores full stringified authorization/report JSON
   timestamp: integer('timestamp').notNull(),
 });
 

@@ -1,126 +1,226 @@
 # WatchTower
 
-## The security oracle for autonomous agents that trade onchain
+## Pre-execution security for autonomous trading agents
 
-An autonomous trading agent finds a newly launched token, sees momentum, and prepares a buy. The token is a honeypot. Before the trade is signed, WatchTower intercepts the decision, analyzes the contract and market in real time, returns an **ABORT** verdict, and anchors a cryptographic receipt on X Layer.
+Autonomous agents can find a market opportunity, reason about it, and submit a transaction faster than a human can inspect the token behind it. WatchTower adds a security gate before that execution step.
 
-That is the job: give autonomous agents a security decision they can act on before they put capital at risk.
+WatchTower gives agents two production-facing experiences:
 
-WatchTower is not another token-scanning dashboard. It is **threat-intelligence middleware** for AI agents. Through an API, an MCP server, and a TypeScript SDK, it turns live onchain and market signals into a machine-readable `TRADE`, `CAUTION`, or `ABORT` recommendation. Deep-scan results are persisted as public reports and cryptographically attested on X Layer.
+- **Firewall**: a fast, lightweight token security check for frequent pre-trade screening.
+- **Authorization**: the premium Permission to Execute flow. It runs the full threat engine, evaluates execution policy, issues a signed Execution Permit when allowed, and returns a machine-readable decision.
 
-> Built for the X Layer Hackathon. WatchTower is engineered for an X Layer Mainnet deployment: network-specific values live in configuration, while the security engine, payment boundary, MCP flow, SDK, and report pipeline remain unchanged across environments.
+The core guarantee is simple:
 
-| In one minute | WatchTower answers |
-| --- | --- |
-| **The problem** | Autonomous agents can execute faster than humans can spot honeypots, illiquidity, concentrated ownership, and hostile token controls. |
-| **The solution** | An agent-callable security layer that scans before execution, bills machine-to-machine, and returns a policy-ready verdict. |
-| **Why X Layer** | Low-cost, high-throughput EVM execution makes attestations practical for frequent security decisions, not just occasional audits. |
-| **Why it is different** | WatchTower is middleware for agents, providing MCP and SDK integration, shared threat intelligence, and verifiable onchain receipts. |
+> An autonomous agent should not execute unless WatchTower returns `AUTHORIZED` and the Execution Permit verifies successfully.
 
----
+WatchTower can be used through the TypeScript SDK, REST API, MCP server, and CLI demo agent. The technical sections below cover payments, reports, attestations, and deployment; the product idea is simpler: verify first, execute second.
 
-## Why this matters
+Built for the **X Layer Hackathon**.
 
-The next wave of onchain activity will not be clicked through manually. AI agents will research markets, rebalance portfolios, discover liquidity, and submit transactions at machine speed. This creates a painful asymmetry: malicious token contracts need only one automated mistake, while every agent needs reliable risk context before each decision.
+## Why WatchTower?
 
-Traditional scanners are designed for a human reading a web page after the fact. WatchTower is designed for the moment before execution:
+Traditional security tools return information. WatchTower returns permission.
 
-1. An agent submits a token address, with an explicit EVM chain or automatic chain resolution.
-2. WatchTower evaluates live, verifiable risk signals across liquidity, contract behavior, holder concentration, and market/social activity.
-3. The agent receives a compact verdict and reasoning it can place directly in its own execution policy.
-4. A deep scan creates a public report and, after confirmation, an immutable X Layer attestation.
+It is not another dashboard for humans to refresh after discovering a token. It is an execution authorization layer for autonomous agents: a service an agent calls before it signs, swaps, or routes capital. Firewall answers, "What does this token look like?" Authorization answers, "Is this agent allowed to execute this intent?"
 
-The result is a reusable security primitive for every agent builder, rather than a one-off research tool.
+That shift matters because autonomous agents do not naturally pause at the wallet confirmation screen. WatchTower creates that pause in software.
 
----
+```ts
+const result = await watchtower.authorize({
+  action: "swap",
+  token: "0xTokenAddress",
+});
 
-## Why X Layer
+if (!result.executable || !result.authorization) {
+  return;
+}
 
-Security decisions for autonomous agents need to be inexpensive enough to make often and fast enough to matter. X Layer is the deliberate foundation for WatchTower's attestation and payment layer.
-
-X Layer is an EVM-compatible Ethereum Layer 2 built by OKX with Polygon CDK technology. Its scalable execution environment and low transaction-cost profile make it well-suited to recording high-frequency security receipts that would be uneconomical on a high-fee base layer. Its EVM compatibility also lets WatchTower use familiar ERC-20 payment and Solidity attestation patterns while remaining accessible to existing agent and wallet tooling. [X Layer announcement](https://medium.com/xlayer-official/introducing-x1-a-new-evm-compatible-layer-2-network-designed-to-build-the-future-of-web3-2d9ec69312a6) | [Polygon CDK overview](https://docs.polygon.technology/chain-development/cdk/get-started/overview)
-
-For WatchTower, that translates into four practical advantages:
-
-- **Fast confirmation path and cost-effective attestations.** X Layer's low-latency execution environment makes a security receipt practical at the point of an agent decision, without turning the receipt itself into the product's largest cost.
-- **EVM-native payments.** Agents settle configured ERC-20 payments, and WatchTower verifies the exact token, recipient, amount, chain, and transaction status.
-- **A scalable path for machine activity.** The architecture is suited to frequent agent-to-agent requests, rather than a handful of manual approvals.
-- **Polygon CDK ecosystem alignment.** WatchTower is built around the same EVM and scalable-chain direction that supports interoperable, ZK-powered L2 infrastructure.
-
-X Layer is not an ornamental deployment target. It makes it feasible for an agent security protocol to leave an inexpensive, independently verifiable audit trail for decisions that happen all day.
-
----
-
-## What WatchTower does today
-
-```mermaid
-flowchart LR
-    A[Autonomous AI agent] --> B[WatchTower SDK, REST API, or MCP]
-    B --> C{Payment boundary}
-    C -->|402 challenge| A
-    A -->|ERC-20 settlement + retry| C
-    C --> D[Chain resolution]
-    D --> E[Threat engine]
-    E --> F[Liquidity Intelligence\nDexScreener]
-    E --> G[Contract DNA\nGoPlus]
-    E --> H[Whale Intelligence\nEthplorer]
-    E --> I[Social Threat Radar\nmarket activity signals]
-    E --> J[Verdict: TRADE / CAUTION / ABORT]
-    J --> K[(SQLite or Turso)]
-    J --> L[WatchTowerRegistry\non X Layer]
-    K --> M[Public report]
-    L --> N[Onchain verification]
+await executeTrade(result.authorization);
 ```
 
-### A real-data-only threat engine
+### Quick Navigation
 
-WatchTower currently combines four modules:
+- [Why WatchTower?](#why-watchtower)
+- [Product model](#product-model)
+- [First Authorization request](#sdk)
+- [CLI demo agent](#cli-demo-agent)
+- [MCP tools](#mcp)
+- [REST API](#rest-api)
+- [x402 payments](#x402-payment-flow)
+- [Running locally](#running-locally)
+- [Deployment](#deployment)
+- [Post-hackathon hardening](#post-hackathon-hardening)
 
-| Module | Live data source | What it evaluates |
-| --- | --- | --- |
-| **Liquidity Intelligence** | DexScreener | Liquidity depth, missing pairs, pair age, volume, and inactive markets. |
-| **Contract DNA Scanner** | GoPlus Security | Honeypot behavior, sell restrictions, mintability, ownership controls, and token taxes. |
-| **Whale Intelligence** | Ethplorer | Holder concentration and largest-holder exposure. |
-| **Social Threat Radar** | DexScreener-backed activity signals | Market activity, transaction skew, volatility, and bot-like indicators. |
+---
 
-Only genuine, provider-backed results affect the threat score. If a module is unavailable, rate-limited, or cannot verify a result, WatchTower marks it unavailable, excludes its weight from the score, redistributes the remaining weights, and lowers confidence. It never invents, estimates, or simulates risk data to fill a gap.
+## The Problem
 
-### Chain-aware by design
+AI agents are becoming active participants in onchain markets. They can monitor tokens, discover liquidity, and make trading decisions continuously. That creates a new security problem: malicious token contracts only need one automated mistake.
 
-The same contract address can exist on multiple EVM networks. WatchTower therefore treats `chainId` as a first-class security input. Callers may supply it explicitly; when omitted, the service uses liquidity, bytecode, and security-profile signals to resolve the most likely supported network. Ambiguous or fallback-only detections are rejected before payment, preventing a paid scan from silently targeting the wrong chain.
+Humans usually pause before signing a transaction. They scan the destination, notice a warning, hesitate, or ask for another opinion. Autonomous agents do not have that instinct by default. Once their policy says "go," execution can happen immediately.
 
-### Public reports, deterministic receipts
+WatchTower protects that exact moment before execution.
 
-Deep scans create a report and a deterministic content hash:
+It answers:
+
+- Is this token safe enough for an agent to consider?
+- Should this exact execution intent be allowed?
+- Was the decision backed by a signed Execution Permit?
+- Can operators inspect what happened later?
+
+### Traditional Scanner vs WatchTower
+
+| Traditional scanner | WatchTower |
+| --- | --- |
+| Returns information | Returns permission |
+| Built for humans | Built for autonomous agents |
+| Dashboard-driven | SDK, REST, and MCP native |
+| Risk score | Machine-readable execution decision |
+| Useful after discovery | Designed for the pre-execution path |
+
+---
+
+## Why Permission to Execute Matters
+
+Threat intelligence alone is useful, but autonomous systems need a deterministic execution gate.
+
+Authorization turns a token scan into a decision:
 
 ```text
-sha256(chainId:tokenAddress:threatScore:confidence:timestamp)
+AUTHORIZED
+REVIEW_REQUIRED
+DENIED
 ```
 
-After the registry transaction has mined successfully, WatchTower stores the transaction hash and exposes the result through the report and verification experiences. The onchain registry emits a chain-aware `ScanRecorded` event containing the token, scan hash, score, and timestamp.
+Only `AUTHORIZED` can produce an Execution Permit. The SDK and demo agent verify that permit before execution continues. `DENIED`, `REVIEW_REQUIRED`, missing permits, malformed permits, expired permits, signer mismatch, or signature verification failure all block execution.
+
+The LLM never overrides WatchTower. It may explain the result, but WatchTower and the policy engine decide whether the agent may act.
 
 ---
 
-## The developer experience: security middleware in a few lines
+## Product Model
 
-WatchTower's SDK is its primary product surface. It lets an autonomous agent place a security gate immediately before its own execution logic, without teaching every agent team how to interpret every honeypot signal.
+| Experience | Endpoint / Tool | Price | Purpose |
+| --- | --- | ---: | --- |
+| **Firewall** | `POST /api/scan` / `scan_token` | 0.5 USDT | Fast risk verdict for frequent checks. |
+| **Authorization** | `POST /api/authorize` / `authorize_transaction` | 1 USDT | Full threat analysis, policy evaluation, signed Execution Permit, immediate execution decision, and audit metadata. |
 
-The workspace package is currently named `okx-watchtower-middleware` and is designed for the `@okx-watchtower-middleware` package identity when published. It is intentionally a middleware layer, not just a data endpoint.
+`POST /api/scan/deep`, SDK `deepScan()`, and MCP `deep_scan_token` remain available only as compatibility aliases for existing Marketplace and legacy integrations. New integrations should use Authorization.
+
+---
+
+## How WatchTower Works
+
+```mermaid
+flowchart TD
+    A["Agent intent"] --> B["Authorization request"]
+    B --> C["Threat analysis"]
+    C --> D["Policy evaluation"]
+    D --> E{"Decision"}
+    E -->|"DENIED"| F["Block execution"]
+    E -->|"REVIEW_REQUIRED"| G["Pause for review"]
+    E -->|"AUTHORIZED"| H["Issue Execution Permit"]
+    H --> I["Local permit verification"]
+    I --> J["Return execution decision"]
+    J --> K["Agent may execute"]
+    J --> L["X Layer attestation begins"]
+    L --> M["Audit record confirmed"]
+```
+
+Firewall follows the same threat-analysis engine but stops earlier: it returns a fast risk verdict for the agent's own policy instead of issuing an Execution Permit.
+
+### Threat Engine
+
+WatchTower uses live provider-backed data. It does not invent missing signals.
+
+| Module | Source | Checks |
+| --- | --- | --- |
+| Liquidity Intelligence | DexScreener | Liquidity depth, pair activity, volume, age, missing markets. |
+| Contract DNA | GoPlus Security | Honeypot flags, sell restrictions, ownership controls, mintability, taxes. |
+| Whale Intelligence | Ethplorer | Holder concentration and top-holder exposure. |
+| Social Threat Radar | DexScreener-backed market activity | Transaction skew, volatility, momentum, bot-like activity signals. |
+
+If a module is unavailable, WatchTower marks it unavailable, excludes its weight from scoring, redistributes active module weights, and lowers confidence.
+
+### Chain Resolution
+
+`chainId` is a first-class input. If callers omit it, WatchTower attempts chain resolution using supported EVM networks. Ambiguous or fallback-only results are rejected before payment so users are not charged for a scan against the wrong chain.
+
+### Policy Evaluation
+
+Threat recommendations map into execution decisions:
+
+| Threat Recommendation | Authorization Decision | Execution Verdict |
+| --- | --- | --- |
+| `TRADE` | `AUTHORIZED` | `EXECUTE` |
+| `CAUTION` | `REVIEW_REQUIRED` | `REVIEW` |
+| `ABORT` | `DENIED` | `ABORT` |
+
+---
+
+## Execution Permits
+
+Authorization binds approval to a specific execution intent.
+
+The permit includes:
+
+- `agentWallet`
+- `action`
+- `tokenAddress`
+- `chainId`
+- `executionHash`
+- optional `amountUsd`
+- optional `recipient`
+- optional `spender`
+- `calldataHash`
+- `riskScore`
+- `issuedAt`
+- `expiresAt`
+- signer address
+- EIP-712 domain
+- signature
+
+The canonical permit logic lives in the shared SDK permit module and is reused by the backend, SDK, MCP flow, and demo agent. Normal SDK users do not configure trust manually; the SDK pins verification to the built-in WatchTower policy by default. Advanced deployments may override the trust policy for self-hosted infrastructure.
+
+Hash terminology:
+
+| Hash | Meaning |
+| --- | --- |
+| `analysisHash` | Content hash of the threat-analysis result. Preserved as `scanHash` for compatibility. |
+| `permitHash` | Hash of the signed Execution Permit. Present only when a permit is issued. |
+| `reportHash` | Hash used by `/report/[reportHash]`. For authorized permits this is usually the `permitHash`; otherwise it falls back to the analysis hash. |
+
+---
+
+## SDK
+
+Package name in this workspace: `okx-watchtower-middleware`.
+
+If you are integrating WatchTower into an autonomous agent, `authorize()` is the primary API most developers need.
+
+### Authorization
+
+Use `authorize()` anywhere an agent needs a decision before acting.
+
+```bash
+npm install okx-watchtower-middleware
+```
 
 ```ts
 import {
-  WatchTowerAbortError,
+  WatchTowerAuthorizationError,
+  WatchTowerPaymentRequiredError,
   WatchTowerClient,
 } from "okx-watchtower-middleware";
 
-const watchtower = new WatchTowerClient({
-  apiUrl: "https://your-watchtower-host",
+const wt = new WatchTowerClient({
+  apiUrl: "https://watchtowr.xyz",
   agentWallet: process.env.AGENT_WALLET!,
-  threshold: 70,
+  chainId: 196,
   paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,
   paymentRpcUrl: process.env.MAINNET_RPC_URL,
   paymentPolicy: {
-    apiOrigin: "https://your-watchtower-host",
+    apiOrigin: "https://watchtowr.xyz",
     chainId: 196,
     tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
     tokenDecimals: 6,
@@ -130,164 +230,277 @@ const watchtower = new WatchTowerClient({
 });
 
 try {
-  const intelligence = await watchtower.guardTransaction(tokenAddress);
-  // Continue only when this agent's own execution policy accepts the verdict.
-  submitTrade(intelligence);
-} catch (error) {
-  if (error instanceof WatchTowerAbortError) {
-    cancelTrade(error.reasoning);
+  const result = await wt.authorize({
+    action: "swap",
+    token: "0xTokenAddress",
+    amountUsd: 250,
+  });
+
+  if (!result.executable || !result.authorization) {
+    console.log("Execution blocked:", result.decision);
+    return;
   }
+
+  const permit = result.authorization;
+  await executeTrade(permit);
+} catch (error) {
+  if (error instanceof WatchTowerAuthorizationError) {
+    console.log("Permit verification failed:", error.message);
+    return;
+  }
+  if (error instanceof WatchTowerPaymentRequiredError) {
+    console.log("Payment signature required:", error.paymentRequired);
+    return;
+  }
+
   throw error;
 }
 ```
 
-When an approved server returns a payment challenge, the SDK validates its pinned payment policy, creates a signed x402 `PAYMENT-SIGNATURE`, and retries exactly once. WatchTower then asks the OKX facilitator to verify the signature and settle the transfer on-chain before running the scan.
+When `authorize()` returns `executable: true`, the SDK has verified:
 
-**Important:** `paymentPrivateKey` belongs only in a secure, server-side agent runtime. It must never be embedded in a browser bundle, supplied through a dashboard input, committed to the repository, or shared with a third party.
+- WatchTower returned `AUTHORIZED`;
+- an Execution Permit exists;
+- the EIP-712 signature is valid;
+- the signer matches the default WatchTower trust policy;
+- the permit domain matches the canonical policy;
+- the permit has not expired.
+
+If you need to verify a permit outside `authorize()`, use the same built-in trust policy:
+
+```ts
+if (!result.authorization) {
+  return;
+}
+
+const verification = await WatchTowerClient.verifyAuthorization(result.authorization);
+if (!verification.authorized) {
+  return;
+}
+```
+
+### Automatic x402 Settlement
+
+For server-side agent runtimes, the SDK can sign and retry paid requests automatically. The Authorization example above uses this mode. The same payment configuration also works for Firewall.
+
+`paymentPrivateKey` must only be used in a secure server-side agent runtime. The payment policy pins origin, chain, token, treasury, and maximum amount before the SDK signs. Without automatic payment configuration, paid endpoints return `WatchTowerPaymentRequiredError` so an external wallet flow can sign the challenge and retry with `paymentSignature`.
+
+### Firewall
+
+Use `guardTransaction()` when the agent only needs the fast Firewall verdict.
+
+```ts
+const scan = await wt.guardTransaction("0xTokenAddress", {
+  chainId: 196,
+});
+```
+
+`guardTransaction()` throws `WatchTowerAbortError` when the configured threshold is exceeded.
+
+## CLI Demo Agent
+
+The demo agent is the product story in terminal form:
+
+```text
+Market Opportunity
+→ Request Authorization
+→ WatchTower Analysis
+→ Policy Evaluation
+→ Execution Permit Issued
+→ Permit Verification
+→ Execution Gate
+→ Execute / Block / Review
+→ Audit Trail
+```
+
+Run it:
+
+```bash
+cd demo-agent
+npm install
+cp .env.example .env
+npm start
+```
+
+Default mode is Authorization. Legacy flags remain for comparison:
+
+```bash
+npm start -- --authorize
+npm start -- --firewall
+npm start -- --deep
+```
+
+`--deep` is a compatibility alias, not the recommended path for new integrations.
 
 ---
 
-## Machine-to-machine payment flow
+## MCP
 
-WatchTower implements a production-shaped x402 payment boundary for X Layer using the OKX facilitator. The server issues standard `PAYMENT-REQUIRED` challenges, accepts signed `PAYMENT-SIGNATURE` payloads, and keeps verification/settlement isolated behind `PaymentService` so scan routes, MCP tools, and reports do not know which payment backend is operating.
+WatchTower exposes a Streamable HTTP MCP endpoint at:
+
+```text
+POST /api/mcp
+```
+
+Example MCP config:
+
+```json
+{
+  "mcpServers": {
+    "watchtower": {
+      "url": "https://watchtowr.xyz/api/mcp"
+    }
+  }
+}
+```
+
+Tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `scan_token` | Firewall scan. |
+| `authorize_transaction` | Canonical Execution Authorization flow. |
+| `deep_scan_token` | Compatibility alias for existing Marketplace listings. |
+
+Paid MCP calls use the same validation, chain-resolution, x402 settlement, replay protection, payment persistence, and service-delivery recovery logic as REST. If the underlying tool fails after payment settlement, WatchTower releases the payment processing state so the same signed request can be retried instead of finalizing a failed service response.
+
+---
+
+## REST API
+
+### Firewall
+
+```http
+POST /api/scan
+Content-Type: application/json
+PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>
+```
+
+```json
+{
+  "tokenAddress": "0xTokenAddress",
+  "chainId": "196",
+  "agentWallet": "0xAgentWallet"
+}
+```
+
+Returns a fast scan result with threat score, confidence, recommendation, reasoning, module details, and `scanHash` for compatibility with existing scan integrations.
+
+### Authorization
+
+```http
+POST /api/authorize
+Content-Type: application/json
+PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>
+```
+
+```json
+{
+  "tokenAddress": "0xTokenAddress",
+  "chainId": "196",
+  "agentWallet": "0xAgentWallet",
+  "action": "swap",
+  "amountUsd": 250,
+  "recipient": "0xRecipient",
+  "spender": "0xSpender",
+  "calldata": "0x..."
+}
+```
+
+Returns:
+
+- `decision`: `AUTHORIZED`, `REVIEW_REQUIRED`, or `DENIED`
+- `verdict`: `EXECUTE`, `REVIEW`, or `ABORT`
+- `authorization`: signed Execution Permit or `null`
+- `verification`: server-side permit verification result when a permit is issued
+- `attestation`: audit-plane lifecycle metadata. Authorized responses return `pending` immediately, then reports update to `confirmed` or `failed` when X Layer anchoring completes
+- `scan`: `analysisHash`, compatibility `scanHash`, `reportHash`, optional `permitHash`, and `reportUrl`
+- `report`: persisted report payload
+
+### Compatibility
+
+```http
+POST /api/scan/deep
+```
+
+Legacy paid endpoint retained for OKX Marketplace and older SDK integrations. It runs the evolved Authorization analysis path and returns an Execution Authorization compatibility report.
+
+SDK `deepScan()` and MCP `deep_scan_token` remain available for existing integrations. New SDK integrations should use `authorize()`, and new MCP integrations should use `authorize_transaction`.
+
+### Other Routes
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/mcp` | MCP Streamable HTTP endpoint. |
+| `POST /api/scan/dashboard` | Free Network Explorer token report entry point. |
+| `GET /api/telemetry` | Operational scan/payment/feed telemetry. |
+| `GET /api/health` | Health and payment-network readiness. |
+| `GET /report/[reportHash]` | Public report view. |
+| `GET /verify` | X Layer registry transaction verification. |
+
+---
+
+## x402 Payment Flow
+
+WatchTower uses x402 with the OKX facilitator for machine-to-machine payments.
 
 ```mermaid
 sequenceDiagram
-    participant Agent as AI agent / SDK
-    participant API as WatchTower API
-    participant Chain as X Layer RPC
-    participant DB as Payment registry
+    participant Agent
+    participant WatchTower
+    participant OKX as OKX Facilitator
+    participant DB as Payment DB
 
-    Agent->>API: POST /api/scan
-    API-->>Agent: 402 + PAYMENT-REQUIRED
-    Agent->>Agent: Sign x402 PaymentPayload for configured ERC-20
-    Agent->>API: Retry with PAYMENT-SIGNATURE header
-    API->>Chain: OKX Facilitator verifies signature + settles transfer
-    API->>DB: Record settlement
-    API-->>Agent: Scan result or deep-scan report
+    Agent->>WatchTower: Protected request without payment
+    WatchTower-->>Agent: 402 + PAYMENT-REQUIRED
+    Agent->>Agent: Sign accepted payment requirement
+    Agent->>WatchTower: Retry with PAYMENT-SIGNATURE
+    WatchTower->>WatchTower: Validate challenge, amount, asset, network, payTo, request hash
+    WatchTower->>OKX: Verify and settle
+    OKX-->>WatchTower: Settlement tx hash + payer
+    WatchTower->>DB: Persist settled payment before service delivery
+    WatchTower->>WatchTower: Run Firewall or Authorization
+    WatchTower->>DB: Persist completed response
+    WatchTower-->>Agent: Result + PAYMENT-RESPONSE
 ```
 
-### What is verified
+Reliability properties:
 
-Before a protected request proceeds, the payment boundary checks:
-
-- the signed payload uses the supported `exact` scheme;
-- the payload targets the configured x402 network;
-- the accepted requirement pays the configured treasury;
-- the accepted amount and asset match the tier challenge; and
-- the OKX facilitator reports successful on-chain settlement.
-
-Payment records bind settlement to endpoint, tier, request hash, payer, and facilitator transaction. Atomic processing claims prevent concurrent retries from producing duplicate scan work, and completed response payloads let a retry return the already-paid result.
-
-### Current pricing
-
-| Tier | Endpoint | Price | Outcome |
-| --- | --- | ---: | --- |
-| **Firewall Scan** | `POST /api/scan` | 0.5 USDT | Fast risk verdict for an agent policy. |
-| **Deep Scan** | `POST /api/scan/deep` | 1 USDT | Full report plus X Layer attestation after confirmed registry write. |
-
-The production target is **X Layer Mainnet (chain ID 196)**. Network-specific values such as RPC URLs, treasury, token, registry address, and chain IDs live in configuration. Production mode rejects an invalid or missing network selection rather than silently choosing a network.
+- successful payment responses are not returned until settlement is durably persisted;
+- settlement transaction hashes are unique;
+- request hashes bind payment to endpoint, tier, method, and request body;
+- verified payer identity is used for paid service attribution;
+- completed paid responses are replayable on retry;
+- transient `processing` states include retry guidance;
+- failed service delivery releases the payment back to a recoverable settled state.
 
 ---
 
-## Architecture and trust model
+## Reports, Attestations, And Audit Trail
 
-### Why the engine is offchain in V1
-
-Threat analysis is intentionally offchain today. Calling external intelligence providers, interpreting contract-risk metadata, resolving chains, and aggregating market signals are latency-sensitive tasks that are expensive and impractical to execute inside a smart contract. Keeping that work offchain allows WatchTower to return a useful decision before an agent executes, while storing the important result as a durable onchain receipt.
-
-This is a conscious V1 trade-off, not a hidden claim of full decentralization:
-
-| V1, implemented | Why it is the right starting point |
-| --- | --- |
-| Central WatchTower threat engine | Fast provider calls, practical operating cost, and rapid iteration on security rules. |
-| Official OKX x402 Standard | Uses the OKX Facilitator to verify signatures and settle payments directly on-chain without trusting a Web2 payment gateway. |
-| Owner-operated registry writer | Keeps attestation writes reliable while the protocol and validator economics are still being proven. |
-| Public reports and registry events | Makes the result and its onchain timestamp independently inspectable. |
-
-The attestation proves that the configured WatchTower registry recorded a particular scan hash at a given time. It does **not** prove that every offchain provider response was independently recomputed by a decentralized network. Consumers should treat a verdict as threat intelligence and retain their own execution limits, wallet permissions, and risk policy.
-
----
-
-## Roadmap & Future Work
-
-### The Enforcer Vault (Cryptographic Co-signer)
-
-While WatchTower currently operates as an intelligence and attestation layer, the next architectural evolution is active onchain enforcement. 
-
-Future versions will introduce the **WatchTower Enforcer Vault**—a smart contract wallet for autonomous agents that requires a cryptographic co-signature from the WatchTower protocol to execute transactions. Instead of relying solely on the agent's internal policy to abort a trade, the Vault strictly enforces security at the consensus level. High-risk transactions are cryptographically blocked from executing unless they satisfy predefined, onchain security policies.
-
-### Decentralization Roadmap
-
-The next protocol stages are planned work focused on progressively decentralizing the threat engine:
-
-1. **Distributed validator nodes** that independently fetch and score the same evidence.
-2. **Decentralized security workers** with staking, reputation, and challenge mechanisms.
-3. **Cryptographic evidence commitments** for the exact inputs used by each module.
-4. **ZK proofs for defined portions of threat calculation** where proving cost and provider data availability make this practical.
-5. **Trust-minimized attestation generation** in which multiple validators authorize a report before it reaches the registry.
-
-The present boundaries are deliberately shaped for that evolution: payment verification, providers, scan orchestration, scoring, persistence, MCP, SDK, and registry interaction are separated rather than fused into route handlers.
-
----
-
-## Interfaces
-
-### REST API
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /api/scan` | Tier 2 firewall scan. |
-| `POST /api/scan/deep` | Tier 1 deep scan and confirmed X Layer attestation. |
-| `POST /api/mcp` | Streamable HTTP endpoint for MCP-compatible clients. |
-| `GET /api/telemetry` | Paginated operational telemetry. |
-| `GET /api/health` | Health and payment-network readiness check. |
-
-Example scan request:
-
-```bash
-curl -X POST https://watchtowr.xyz/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tokenAddress": "0xYourTokenAddress",
-    "agentWallet": "0xYourAgentWallet",
-    "chainId": "196"
-  }'
-```
-
-The first protected request receives `402 Payment Required` together with a standard `PAYMENT-REQUIRED` challenge. Sign the accepted x402 requirement and retry the same request with:
+Authorization reports are persisted and available at:
 
 ```text
-PAYMENT-SIGNATURE: <base64-encoded-payment-payload>
+/report/[reportHash]
 ```
 
-Invalid EVM addresses are rejected before provider calls. Unknown or ambiguous chain resolution is returned before a payment challenge. Public endpoints also use durable, fixed-window rate limiting.
+When an Execution Permit is issued, WatchTower computes a `permitHash` and returns authorization immediately after the permit verifies locally. X Layer anchoring runs as the audit plane: WatchTower records the permit hash through `WatchTowerRegistry` and updates the report when confirmation is available. The `/verify` page decodes a confirmed registry transaction and verifies the emitted `ScanRecorded` event.
 
-### MCP
-
-The MCP server exposes the same scan workflows to desktop and local AI agents through `POST /api/mcp`. The payment and chain-safety boundaries are shared with REST, so MCP cannot bypass validation or settlement rules.
-
-Typical tools:
-
-- `scan_token` for firewall intelligence.
-- `deep_scan_token` for an attested deep scan.
-
-### Browser demonstration
-
-The Command Center is a visual demonstration of the agent flow. It runs free dashboard scans for humans and displays operational telemetry from the same scan and payment tables used by paid API/MCP traffic. It never asks a user to type a private key.
+Attestation proves that the configured WatchTower registry recorded a particular hash, token, chain, score, and timestamp. It does not prove every offchain provider response was independently recomputed by a decentralized validator set.
 
 ---
 
-## Quick start
+## Running Locally
 
 ### Prerequisites
 
 - Node.js 20+
 - npm
-- Foundry (only for smart-contract development and tests)
-- Access to an X Layer Mainnet RPC, the configured ERC-20 payment token, and native OKB for payment and attestation operations
+- Foundry, only for smart-contract tests
+- Turso/libSQL for production-like database testing, or local SQLite for development
+- X Layer RPC, accepted ERC-20 payment token, treasury, and registry signer for live paid tests
 
-### Install and run
+### Install
 
 ```bash
 git clone https://github.com/demola13777/watchtower.git
@@ -299,111 +512,159 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `https://watchtowr.xyz` for the Command Center, `https://watchtowr.xyz/docs` for in-app developer material, and `https://watchtowr.xyz/verify` to inspect an attestation.
+Local development falls back to `watchtower.db` when Turso variables are not set.
 
-### Configure X Layer Mainnet
+### Useful URLs
 
-Set the active environment and supply the network-specific values in `.env.local`:
+```text
+http://localhost:3000
+http://localhost:3000/docs
+http://localhost:3000/network
+http://localhost:3000/verify
+```
+
+---
+
+## Deployment
+
+The application is configuration-driven. Production mode should set:
 
 ```bash
 NEXT_PUBLIC_NETWORK_ENV=mainnet
+NEXT_PUBLIC_SITE_URL=https://watchtowr.xyz
 
-MAINNET_RPC_URL=https://your-dedicated-x-layer-rpc
+MAINNET_RPC_URL=https://your-x-layer-rpc
+MAINNET_CHAIN_ID=196
 MAINNET_TREASURY_ADDRESS=0xYourTreasury
-MAINNET_USDT_ADDRESS=0xYourAcceptedToken
+MAINNET_PAYMENT_TOKEN_SYMBOL=USDT0
+MAINNET_USDT_ADDRESS=0xAcceptedToken
 MAINNET_PAYMENT_TOKEN_DECIMALS=6
 
-NEXT_PUBLIC_REGISTRY_ADDRESS=0xYourRegistry
+NEXT_PUBLIC_REGISTRY_ADDRESS=0xWatchTowerRegistry
 NEXT_PUBLIC_REGISTRY_CHAIN_ID=196
-NEXT_PUBLIC_REGISTRY_RPC_URL=https://your-dedicated-x-layer-rpc
+NEXT_PUBLIC_REGISTRY_RPC_URL=https://your-x-layer-rpc
 PRIVATE_KEY=0xRegistryWriterKey
+
+OKX_API_KEY=...
+OKX_SECRET_KEY=...
+OKX_PASSPHRASE=...
+
+TURSO_DATABASE_URL=...
+TURSO_AUTH_TOKEN=...
 ```
 
-`MAINNET_PAYMENT_TOKEN_DECIMALS` must match the configured ERC-20. The sample value is appropriate for many USDT/USDC deployments, but the configuration is intentionally token-agnostic.
+Before enabling paid traffic:
 
-For an automated agent demo, configure a funded **server-side** agent wallet separately:
-
-```bash
-AGENT_PAYMENT_KEY=0xAgentRuntimeKey
-```
-
-That wallet needs the configured payment token and any approvals required by the x402 exact EVM method used by the facilitator. Keep all private keys in local or managed secret storage. `.env.local` is ignored by Git and must never be committed.
-
-### Mainnet launch configuration
-
-The business logic has no mainnet-specific branch. A live deployment requires an explicit X Layer Mainnet RPC, a verified payment-token contract, treasury, registry address, production database, confirmation policy, and registry signer. Before enabling paid traffic, complete [the mainnet readiness checklist](./docs/MAINNET_READINESS.md) and run end-to-end validation with real funds.
+1. Apply Drizzle migrations with `npm run db:push`.
+2. Run `npm run validate:mainnet`.
+3. Run payment canaries for Firewall and Authorization.
+4. Verify `/report/[reportHash]` and `/verify`.
+5. Run `npm run reconcile:payments`.
+6. Review [docs/MAINNET_READINESS.md](./docs/MAINNET_READINESS.md).
 
 ---
 
-## Local quality checks
+## Post-Hackathon Hardening
+
+The hackathon build is intentionally focused on the Permission to Execute architecture. The remaining production hardening work is operational rather than product-directional:
+
+- move registry signing from a raw application `PRIVATE_KEY` to managed signing or a constrained relayer;
+- add production observability for payment verification, provider health, database errors, and registry writes;
+- complete installed-package SDK testing against the deployed API;
+- load-test payment, MCP, telemetry, and rate-limit paths under realistic agent traffic;
+- continue provider SLA and degraded-mode work for the threat engine.
+
+The tracked release checklist lives in [docs/MAINNET_READINESS.md](./docs/MAINNET_READINESS.md).
+
+---
+
+## Quality Checks
 
 ```bash
-# Application lint and production build
 npm run lint
 npm run build
-
-# SDK package build
-npm --prefix packages/watchtower-sdk run build
-
-# Smart-contract tests
-cd contracts && forge test -vv
-
-# Payment-boundary smoke test (does not spend funds)
-cd .. && npm run test:payments
+npx tsc --noEmit
+npx tsc -p packages/watchtower-sdk/tsconfig.json --noEmit
+npx tsc -p demo-agent/tsconfig.json --noEmit
+npm run test:payments
 ```
 
-The repository also includes CI for linting, production builds, SDK builds, Foundry tests, and high-severity production dependency audit checks.
+Smart-contract tests:
+
+```bash
+cd contracts
+forge test -vv
+```
 
 ---
 
-## Security posture
+## Security Posture
 
-WatchTower is security infrastructure, so its own boundaries matter:
+- Request bodies are validated before payment when possible.
+- Chain ambiguity is rejected before payment.
+- Payment challenges are verified against amount, asset, payTo, network, scheme, method, resource, request hash, payment ID, and tier.
+- Settlement is persisted before service delivery.
+- Duplicate settlement transaction hashes are rejected.
+- SDK payment signing is pinned to a caller-provided payment policy.
+- SDK permit verification uses the default WatchTower trust policy unless explicitly overridden.
+- Firewall is a fast threat check; Authorization is the execution gate.
+- Secrets stay server-side. No browser flow asks users to enter private keys.
 
-- Request bodies use strict validation for EVM addresses and supported chain IDs.
-- Provider failures are visible and excluded from scoring rather than converted into invented values.
-- API and MCP requests share the same payment, validation, chain-resolution, and rate-limit boundaries.
-- Payment payloads are pinned to the configured chain, token, treasury, and maximum amount before the SDK signs, then settled through the OKX facilitator before scan work begins.
-- Payment policy pinning prevents the SDK from automatically paying an arbitrary token, chain, recipient, amount, or API origin.
-- Deep-scan reports are only labeled onchain when the registry transaction is confirmed successfully.
-- Secrets remain server-side. No private-key entry field exists in the browser experience.
-
-WatchTower is threat intelligence, not a guarantee of safety or a replacement for independent transaction simulation, wallet permissions, position sizing, and operator oversight. Agent builders should use its verdict as one component of a defense-in-depth execution policy.
+WatchTower is a security layer, not a complete substitute for wallet limits, transaction simulation, position sizing, operator controls, or independent risk policy.
 
 ---
 
-## Project map
+## Project Map
 
 ```text
 src/
-  app/api/                 REST, MCP, telemetry, and health routes
-  config/network.ts        Network-specific configuration boundary
-  lib/engine.ts            Threat modules and deterministic scoring
-  lib/payment.ts           Payment intents and payment-service boundary
-  lib/scan-service.ts      Shared scan orchestration
-  lib/db/                  Drizzle schema and database access
-packages/
-  watchtower-sdk/          TypeScript middleware for agent runtimes
+  app/api/scan/             Firewall REST route
+  app/api/authorize/        Execution Authorization REST route
+  app/api/scan/deep/        legacy compatibility route
+  app/api/mcp/              MCP Streamable HTTP endpoint and tools
+  app/docs/                 in-app developer documentation
+  app/network/              free Network Explorer and telemetry surface
+  app/report/[hash]/        public report view
+  app/verify/               X Layer registry verifier
+  lib/engine.ts             threat modules and scoring
+  lib/authorize-service.ts  Authorization orchestration
+  lib/permit.ts             backend wrapper around canonical permit logic
+  lib/payment.ts            x402 payment lifecycle
+  lib/scan-service.ts       Firewall and compatibility scan orchestration
+  lib/db/                   Drizzle schema and database access
+
+packages/watchtower-sdk/
+  src/index.ts              SDK client, x402 retry, Authorization contract
+  src/permit.ts             canonical EIP-712 permit implementation
+
+demo-agent/
+  src/agent/workflow.ts     CLI demo Authorization gate
+  src/mcp/client.ts         MCP client used by demo
+
 contracts/
-  src/WatchTowerRegistry.sol  X Layer attestation registry
-  test/                    Foundry coverage for registry ownership and events
-demo/                      Agent and MCP integration examples
+  src/WatchTowerRegistry.sol
 ```
 
 ---
 
-## The opportunity
+## Documentation
 
-AI agents will become permanent participants in onchain markets. Their security layer should be as programmable as their execution layer, as easy to integrate as middleware, and as accountable as an onchain receipt.
-
-WatchTower is the foundation for that layer: a real-time threat oracle for agents, paid for by agents, and anchored on X Layer.
-
-**Build agents that know when not to trade.**
+- [Payment operations](./docs/PAYMENT_OPERATIONS.md)
+- [Mainnet readiness](./docs/MAINNET_READINESS.md)
+- [Database operations](./docs/database-operations.md)
+- [Incident response](./docs/INCIDENT_RESPONSE.md)
+- [Demo agent](./demo-agent/README.md)
 
 ---
 
 ## Links
 
 - Repository: [github.com/demola13777/watchtower](https://github.com/demola13777/watchtower)
-- X Layer: [official site](https://www.xlayer.tech/) and [network status](https://status.xlayer.tech/)
-- Polygon CDK: [developer overview](https://docs.polygon.technology/chain-development/cdk/get-started/overview)
+- X Layer: [official site](https://www.xlayer.tech/)
+- X Layer status: [status.xlayer.tech](https://status.xlayer.tech/)
+
+---
+
+WatchTower exists for one reason: autonomous agents should prove they are allowed to execute before they execute.
+
+**Verify first. Execute second.**

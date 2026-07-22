@@ -2,9 +2,9 @@
 
 ## Production Model
 
-WatchTower uses standard x402 challenges with the OKX facilitator as the V1 production model. The API creates a request-bound challenge, accepts a signed `PAYMENT-SIGNATURE`, asks the facilitator to verify and settle on-chain, and records the settled payment before the scan proceeds.
+WatchTower uses standard x402 challenges with the OKX facilitator as the V1 production model. The API creates a request-bound challenge, accepts a signed `PAYMENT-SIGNATURE`, asks the facilitator to verify and settle on-chain, and records the settled payment before Firewall or Authorization work proceeds.
 
-`PaymentService` remains the replacement boundary if WatchTower changes facilitator providers or adds another x402 scheme later. Scan routes, MCP tools, telemetry, and report generation should continue to consume receipts from that boundary rather than implementing payment logic directly.
+`PaymentService` remains the replacement boundary if WatchTower changes facilitator providers or adds another x402 scheme later. REST routes, MCP tools, telemetry, and report generation should continue to consume receipts from that boundary rather than implementing payment logic directly.
 
 ## Daily Reconciliation
 
@@ -34,7 +34,9 @@ Interpretation:
 - `settled` means the facilitator accepted and settled payment, but scan work has not completed yet.
 - `processing` means a worker/request is currently trying to produce the paid result.
 - `completed` means the paid response payload was persisted and safe retries can return it.
-- Matching `scans` rows confirm that the threat engine persisted the scan result.
+- Matching `scans` rows confirm that the threat engine persisted the Firewall result, Authorization report, or compatibility report.
+
+If a paid service fails after settlement, the payment should move back from `processing` to `settled` with a failure reason. It should not be marked `completed` until the service response has been delivered and persisted.
 
 ## Customer Payment Handling
 
@@ -44,9 +46,9 @@ Interpretation:
 4. Approved refunds are sent manually from the treasury or multisig after a second operator verifies the recipient and amount. Record the original payment ID, refund transaction hash, approvers, and reason.
 5. Never request a private key, seed phrase, or wallet-connect signature from a customer as part of payment support.
 
-## Firewall Attestations
+## Attestations
 
-`RECORD_FIREWALL_SCANS=false` is the Mainnet-safe default. Deep Scans remain attested. Enable Firewall attestations only after the registry signer, gas budget, and throughput limits have been explicitly approved:
+`RECORD_FIREWALL_SCANS=false` is the Mainnet-safe default. Authorization returns after the Execution Permit verifies locally; X Layer attestation runs as non-blocking audit work when a permit is issued. Enable Firewall attestations only after the registry signer, gas budget, and throughput limits have been explicitly approved:
 
 ```bash
 RECORD_FIREWALL_SCANS=true

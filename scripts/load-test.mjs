@@ -12,7 +12,7 @@
  *   LOAD_TEST_BATCHES      — number of batches to run (default: 5)
  */
 
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
+const API_URL = process.env.WATCHTOWER_API_URL || 'https://watchtowr.xyz';
 const CONCURRENCY = Number(process.env.LOAD_TEST_CONCURRENCY || '20');
 const BATCHES = Number(process.env.LOAD_TEST_BATCHES || '5');
 

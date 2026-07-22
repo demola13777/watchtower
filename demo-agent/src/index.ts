@@ -5,38 +5,46 @@
 // discovering market opportunities and consulting Watch Tower
 // before every trade.
 //
+// Every autonomous action now carries a cryptographically
+// verifiable execution authorization.
+//
 // Usage:
-//   npm start                          # Firewall scan (default)
-//   npm start -- <token_address>       # Firewall scan a specific token
-//   npm start -- --deep                # Deep scan with default demo token
-//   npm start -- --deep <token_address> # Deep scan a specific token
+//   npm start                              # Authorize mode (default)
+//   npm start -- <token_address>           # Authorize a specific token
+//   npm start -- --firewall                # Legacy firewall scan
+//   npm start -- --deep                    # Legacy alias for Execution Authorization
+//   npm start -- --deep <token_address>    # Legacy alias for a specific token
 // ───────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
 import { AgentWorkflow } from './agent/workflow.js';
 import { createProvider } from './providers/index.js';
 import type { MarketOpportunity } from './agent/types.js';
-import type { ScanMode } from './mcp/client.js';
+import type { AgentMode } from './mcp/client.js';
 import * as log from './utils/logger.js';
 
 // ── CLI Argument Parsing ─────────────────────────────────────
-// Parses --deep flag and token address from process.argv.
-// Order doesn't matter: `--deep 0xABC` and `0xABC --deep` both work.
+// Parses --authorize, --deep, --firewall flags and token address.
+// Defaults to authorize mode — the evolution.
 
-function parseArgs(): { scanMode: ScanMode; tokenAddress?: string } {
+function parseArgs(): { agentMode: AgentMode; tokenAddress?: string } {
   const args = process.argv.slice(2);
-  let scanMode: ScanMode = 'firewall';
+  let agentMode: AgentMode = 'authorize'; // Default to the new mode
   let tokenAddress: string | undefined;
 
   for (const arg of args) {
-    if (arg === '--deep') {
-      scanMode = 'deep';
+    if (arg === '--authorize') {
+      agentMode = 'authorize';
+    } else if (arg === '--deep') {
+      agentMode = 'deep';
+    } else if (arg === '--firewall') {
+      agentMode = 'firewall';
     } else if (arg.startsWith('0x') || arg.startsWith('0X')) {
       tokenAddress = arg;
     }
   }
 
-  return { scanMode, tokenAddress };
+  return { agentMode, tokenAddress };
 }
 
 // ── Demo Scenarios ────────────────────────────────────────────
@@ -60,16 +68,16 @@ const DEMO_OPPORTUNITIES: MarketOpportunity[] = [
 
 async function main(): Promise<void> {
   try {
-    const { scanMode, tokenAddress } = parseArgs();
+    const { agentMode, tokenAddress } = parseArgs();
 
     // Resolve the MCP endpoint
-    const mcpUrl = process.env.WATCHTOWER_MCP_URL || 'http://localhost:3000/api/mcp';
+    const mcpUrl = process.env.WATCHTOWER_MCP_URL || 'https://watchtowr.xyz/api/mcp';
 
     // Create the LLM provider
     const provider = createProvider();
 
-    // Initialize the workflow with scan mode
-    const workflow = new AgentWorkflow(mcpUrl, provider, scanMode);
+    // Initialize the workflow with agent mode
+    const workflow = new AgentWorkflow(mcpUrl, provider, agentMode);
     await workflow.boot();
 
     // Determine which tokens to scan

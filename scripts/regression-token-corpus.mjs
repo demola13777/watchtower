@@ -10,7 +10,7 @@
  *   WATCHTOWER_API_URL=https://your-deployment.vercel.app node scripts/regression-token-corpus.mjs
  */
 
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
+const API_URL = process.env.WATCHTOWER_API_URL || 'https://watchtowr.xyz';
 
 // Corpus: well-known tokens with expected properties.
 // Each entry defines expected signals that should appear in the scan response.

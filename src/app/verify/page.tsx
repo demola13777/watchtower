@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Hexagon, Search, CheckCircle, XCircle, ExternalLink, Loader2, Fingerprint } from "lucide-react";
+import Image from "next/image";
+import { Search, CheckCircle, XCircle, ExternalLink, Loader2, Fingerprint } from "lucide-react";
 import Link from 'next/link';
 import { createPublicClient, decodeEventLog, http, defineChain, parseAbiItem } from 'viem';
 import { REGISTRY_ADDRESS, REGISTRY_CHAIN_ID } from '@/lib/config';
@@ -149,9 +150,7 @@ export default function VerifyPage() {
       <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
-              <Hexagon className="h-5 w-5 text-white" />
-            </div>
+            <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg" />
             <span className="text-xl font-bold text-white">WatchTower</span>
           </Link>
           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">
@@ -162,8 +161,8 @@ export default function VerifyPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-12 sm:py-24 animate-fade-in-up delay-100">
         <div className="text-center mb-12">
-          <h1 className="text-4xl sm:text-5xl font-black text-white mb-4 drop-shadow-sm">Manual Verification</h1>
-          <p className="text-slate-400">Enter a WatchTower registry transaction hash to verify its on-chain attestation.</p>
+          <h1 className="text-4xl sm:text-5xl font-black text-white mb-4 drop-shadow-sm">Verify an Attestation</h1>
+          <p className="text-slate-400">Enter a WatchTower registry transaction hash to confirm the on-chain receipt.</p>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-700/50 backdrop-blur-md p-6 sm:p-10 rounded-3xl shadow-xl relative overflow-hidden group">
@@ -203,7 +202,7 @@ export default function VerifyPage() {
             </div>
             <h2 className="mb-2 text-xl font-black text-white">Attestation Not Found</h2>
             <p className="mx-auto max-w-xl text-sm leading-relaxed text-slate-400">
-              This transaction exists neither as a successful WatchTowerRegistry attestation nor as a readable scan event on {registryChain.name}. Check that the hash is from a completed WatchTower scan transaction.
+              This transaction is not a successful WatchTowerRegistry attestation on {registryChain.name}. Check that the hash came from a completed WatchTower authorization receipt.
             </p>
           </div>
         )}
@@ -215,16 +214,16 @@ export default function VerifyPage() {
             <div className={`p-6 rounded-2xl border shadow-[0_0_30px_rgba(16,185,129,0.1)] bg-emerald-500/5 border-emerald-500/30`}>
               <div className="flex items-center gap-3 mb-4">
                 <CheckCircle className="h-6 w-6 text-emerald-400" />
-                <span className="text-lg font-bold text-emerald-400">Scan Verified On-Chain</span>
+                <span className="text-lg font-bold text-emerald-400">Attestation Verified On-Chain</span>
               </div>
               <p className="text-sm text-slate-400">
-                This scan record was independently verified from the X Layer blockchain. The data below was read directly from the WatchTowerRegistry smart contract event logs rather than the WatchTower server.
+                This receipt was independently verified from the X Layer blockchain. The data below was read directly from WatchTowerRegistry event logs rather than the WatchTower server.
               </p>
             </div>
 
             {/* Scan Details */}
             <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/50 border border-slate-800">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-5 sm:mb-6">Attested Scan Data</h3>
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-5 sm:mb-6">Attested Authorization Data</h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <div>

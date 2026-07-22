@@ -127,7 +127,7 @@ turso db shell watchtower "SELECT name, COUNT(*) as rows FROM (SELECT 'scans' as
 
 | Table | Purpose | Primary Key | Growth Rate |
 |-------|---------|-------------|-------------|
-| `scans` | Scan results and reports | `id` (auto-increment) | ~per scan |
+| `scans` | Firewall results, Authorization reports, compatibility reports, and report lookup hashes | `id` (auto-increment) | ~per delivered service |
 | `payments` | Payment intent lifecycle | `payment_id` (UUID) | ~per API request |
 | `used_payment_transactions` | Compatibility settlement ledger | `tx_hash` | ~per settled payment |
 | `agents` | Agent reputation tracking | `wallet` (address) | ~per unique agent |
@@ -150,6 +150,13 @@ WHERE status IN ('settled', 'processing', 'completed')
 -- Top agents by scan count
 SELECT wallet, total_scans, reckless_trades
 FROM agents ORDER BY total_scans DESC LIMIT 10;
+
+-- Recent Authorization reports and their report hashes
+SELECT scan_hash, tx_hash, recommendation, timestamp
+FROM scans
+WHERE tier = 'authorize'
+ORDER BY timestamp DESC
+LIMIT 20;
 
 -- Expired pending intents (candidates for cleanup)
 SELECT COUNT(*) FROM payments

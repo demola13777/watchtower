@@ -95,6 +95,7 @@ interface SocialCache {
 // Configuration
 // ---------------------------------------------------------------------------
 const FETCH_TIMEOUT_MS = 8000;
+const ATTESTATION_RECEIPT_TIMEOUT_MS = Number(process.env.ATTESTATION_RECEIPT_TIMEOUT_MS ?? 45_000);
 
 // ---------------------------------------------------------------------------
 // In-Memory Cache with Eviction + Size Limit (F14)
@@ -128,8 +129,7 @@ async function fetchWithTimeout(url: string, options?: RequestInit, timeoutMs = 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
+    return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
@@ -201,9 +201,7 @@ async function liquidityModule(address: string, chainId: string): Promise<Module
 
   const cacheKey = `liquidity_${chainId}_${address}`;
   const cached = getCached<ModuleResult>(cacheKey);
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
   try {
     const data = await fetchDexScreenerData(address);
@@ -301,9 +299,7 @@ async function contractDnaModule(address: string, chainId: string): Promise<Modu
 
   const cacheKey = `contractdna_${chainId}_${address}`; // M2: Add caching
   const cached = getCached<ModuleResult>(cacheKey);
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
   try {
     const res = await fetchWithTimeout(`https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${address}`);
@@ -617,7 +613,7 @@ async function socialModule(address: string, chainId: string): Promise<ModuleRes
 }
 
 // ---------------------------------------------------------------------------
-// Composite Engine — shared by /api/scan and /api/scan/deep
+// Composite Engine — shared by firewall and authorization routes
 // C4: Pure analysis function — no blockchain side effects
 // ---------------------------------------------------------------------------
 export function createScanHash(input: {
@@ -636,7 +632,7 @@ export async function analyzeToken(address: string, chainId = DEFAULT_CHAIN_ID):
     liquidityModule(address, chainId),
     contractDnaModule(address, chainId),
     whaleModule(address, chainId),
-    socialModule(address, chainId)
+    socialModule(address, chainId),
   ]);
 
   // Calculate composite score from active modules only. Module scores are already
@@ -805,7 +801,10 @@ export async function submitScanProof(
       gas,
     });
 
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+      timeout: ATTESTATION_RECEIPT_TIMEOUT_MS,
+    });
     if (receipt.status !== 'success') {
       throw new Error(`Registry transaction ${txHash} reverted.`);
     }

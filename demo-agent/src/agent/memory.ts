@@ -37,6 +37,13 @@ export class AgentMemory {
   }
 
   /**
+   * Get the previous session decision for a token.
+   */
+  get(tokenAddress: string): MemoryEntry | null {
+    return this.entries.get(tokenAddress.toLowerCase()) ?? null;
+  }
+
+  /**
    * Get all recorded decisions.
    */
   getAll(): MemoryEntry[] {

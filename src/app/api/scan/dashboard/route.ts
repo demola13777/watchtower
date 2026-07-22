@@ -12,7 +12,7 @@ import { scanRequestSchema } from '@/lib/validation';
  * Designed for human users exploring WatchTower through the web interface.
  * 
  * Agent-to-agent interactions should continue using:
- *   - POST /api/scan/deep   (x402-gated Deep Scan)
+ *   - POST /api/authorize   (x402-gated Execution Authorization)
  *   - POST /api/mcp         (MCP tool surface with x402 payment)
  */
 export async function POST(req: Request) {
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const deepReport = await runDeepScan({
+    const authorizationReport = await runDeepScan({
       ...input,
       agentWallet: 'web_dashboard',
       chainResolution,
@@ -36,11 +36,11 @@ export async function POST(req: Request) {
     });
 
     // Override tier and price to reflect the free web scan context
-    deepReport.tier = 'Free Web Scan';
-    deepReport.price = 'Free';
-    deepReport.verification.status = 'Free scan — on-chain attestation available via paid API';
+    authorizationReport.tier = 'Free Web Scan';
+    authorizationReport.price = 'Free';
+    authorizationReport.verification.status = 'Free scan — Permission to Execute available via paid API';
 
-    return NextResponse.json({ success: true, data: deepReport });
+    return NextResponse.json({ success: true, data: authorizationReport });
   } catch (error: unknown) {
     console.error('Dashboard scan error:', error);
     if (error instanceof ZodError) {

@@ -3,7 +3,7 @@ import nextEnv from '@next/env';
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
+const API_URL = process.env.WATCHTOWER_API_URL || 'https://watchtowr.xyz';
 const TOKEN_ADDRESS = process.env.NEGATIVE_TEST_TOKEN_ADDRESS
   || process.env.MAINNET_USDT_ADDRESS
   || '0x0000000000000000000000000000000000000001';

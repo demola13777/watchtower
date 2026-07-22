@@ -1,3 +1,23 @@
+import { type AuthorizationDecision, type AuthorizationVerification, type ExecutionAuthorization, type ExecutionAuthorizationVerificationOptions, type ExecutionPermitDomain, type WatchTowerAuthorizationPolicy } from './permit.js';
+export type AuthorizationAttestation = {
+    status: 'pending';
+    permitHash: string;
+    txHash?: null;
+    chain?: string;
+    reason?: string;
+} | {
+    status: 'confirmed';
+    permitHash: string;
+    txHash: string;
+    chain: string;
+    reason?: string;
+} | {
+    status: 'failed';
+    permitHash: string;
+    txHash?: null;
+    chain?: string;
+    reason: string;
+};
 export interface WatchTowerPaymentPolicy {
     /** Exact API origin that is allowed to request automatic settlement. */
     apiOrigin: string;
@@ -61,6 +81,8 @@ export interface WatchTowerConfig {
     paymentRpcUrl?: string;
     /** Required when paymentPrivateKey is supplied so automatic settlement is pinned to a trusted policy. */
     paymentPolicy?: WatchTowerPaymentPolicy;
+    /** Advanced: override the default WatchTower Mainnet permit trust policy for enterprise/self-hosted deployments. */
+    authorizationPolicy?: WatchTowerAuthorizationPolicy;
 }
 export interface WatchTowerRequestOptions {
     chainId?: string | number;
@@ -80,6 +102,14 @@ export declare class WatchTowerPaymentRequiredError extends Error {
 export declare class WatchTowerPaymentFundingError extends Error {
     constructor(message: string);
 }
+export declare class WatchTowerAuthorizationError extends Error {
+    authorization?: ExecutionAuthorization | null;
+    verification?: AuthorizationVerification | null;
+    constructor(message: string, details?: {
+        authorization?: ExecutionAuthorization | null;
+        verification?: AuthorizationVerification | null;
+    });
+}
 export declare class WatchTowerClient {
     private apiUrl;
     private agentWallet;
@@ -88,6 +118,7 @@ export declare class WatchTowerClient {
     private paymentPrivateKey;
     private paymentRpcUrl;
     private paymentPolicy;
+    private authorizationPolicy;
     constructor(config: WatchTowerConfig);
     /**
      * Core Middleware Interceptor.
@@ -96,11 +127,43 @@ export declare class WatchTowerClient {
      */
     guardTransaction(targetTokenAddress: string, chainIdOrOptions?: string | number | WatchTowerRequestOptions | undefined): Promise<ScanResponse['data']>;
     /**
-     * Deep Scan — Tier 1 (1 USDT)
-     * Returns a comprehensive threat report with on-chain attestation.
-     * Unlike guardTransaction(), this does NOT throw on high threat scores.
+     * @deprecated Use authorize(). Execution Authorization is the premium
+     * Permission to Execute experience. This method remains as a compatibility
+     * alias for existing /api/scan/deep integrations.
      */
-    deepScan(targetTokenAddress: string, chainIdOrOptions?: string | number | WatchTowerRequestOptions | undefined): Promise<DeepScanResponse>;
+    deepScan(targetTokenAddress: string, chainIdOrOptions?: string | number | WatchTowerRequestOptions | undefined): Promise<ExecutionAuthorizationCompatibilityResponse>;
+    /**
+     * Execution Authorization — the evolution.
+     *
+     * Evaluates a proposed transaction through the full WatchTower threat analysis
+     * pipeline and returns a cryptographically signed Execution Authorization.
+     *
+     * Unlike guardTransaction(), this does NOT throw on DENIED — the caller decides.
+     * The SDK verifies the EIP-712 signature locally before returning. When
+     * executable is true, the Execution Permit is already valid; X Layer
+     * attestation is informational audit metadata and may still be pending.
+     *
+     * Every autonomous action now carries a cryptographically verifiable
+     * execution authorization.
+     */
+    authorize(input: {
+        action?: string;
+        token: string;
+        amountUsd?: number;
+        chainId?: string | number;
+        recipient?: string;
+        spender?: string;
+        calldata?: string;
+        executionHash?: string;
+        paymentSignature?: string;
+    }): Promise<AuthorizationResponse>;
+    /**
+     * Verify an Execution Authorization signature locally.
+     *
+     * Uses EIP-712 typed data verification to confirm the authorization
+     * was genuinely signed by the WatchTower signer.
+     */
+    static verifyAuthorization(authorization: ExecutionAuthorization, policy?: WatchTowerAuthorizationPolicy): Promise<AuthorizationVerification>;
     private normalizeOptions;
     private createHeaders;
     private readPaymentRequirement;
@@ -108,7 +171,7 @@ export declare class WatchTowerClient {
     private getPaymentRpcUrl;
     private createPaymentSignatureHeaders;
 }
-export interface DeepScanResponse {
+export interface ExecutionAuthorizationCompatibilityResponse {
     reportType: string;
     tier: string;
     price: string;
@@ -153,4 +216,38 @@ export interface DeepScanResponse {
     };
     recommendations: string[];
 }
+/** @deprecated Use ExecutionAuthorizationCompatibilityResponse. */
+export type DeepScanResponse = ExecutionAuthorizationCompatibilityResponse;
+export interface AuthorizationResponse {
+    decision: AuthorizationDecision;
+    verdict: 'EXECUTE' | 'REVIEW' | 'ABORT';
+    riskScore: number;
+    confidence: number;
+    reasoning: string[];
+    authorization: ExecutionAuthorization | null;
+    attestation: {
+        status?: 'pending' | 'confirmed' | 'failed';
+        permitHash: string;
+        txHash?: string | null;
+        chain?: string;
+        reason?: string;
+    } | null;
+    /** Populated by the SDK after client-side signature verification */
+    verification?: AuthorizationVerification;
+    /** True only when WatchTower returned AUTHORIZED and the permit verified locally. Does not depend on attestation status. */
+    executable?: boolean;
+    scan?: {
+        /** Threat-analysis content hash. Preserved as scanHash for backward compatibility. */
+        analysisHash?: string;
+        /** @deprecated Use analysisHash for threat-analysis content, or reportHash for the public report URL key. */
+        scanHash: string;
+        /** Hash used by /report/[hash]. For authorized permits this is usually the permitHash. */
+        reportHash?: string;
+        /** Execution Permit hash, when a permit was issued. */
+        permitHash?: string | null;
+        reportUrl: string;
+    };
+}
+export type { AuthorizationDecision, AuthorizationVerification, ExecutionAuthorization, ExecutionAuthorizationVerificationOptions, ExecutionPermitDomain, WatchTowerAuthorizationPolicy, };
+export { DefaultAuthorizationPolicy, WatchTowerPolicy, createExecutionHash, createPermitDigest, createPermitDomain, verifyExecutionAuthorization, verificationOptionsFromPolicy, } from './permit.js';
 //# sourceMappingURL=index.d.ts.map

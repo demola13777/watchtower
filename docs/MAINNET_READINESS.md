@@ -10,7 +10,7 @@ WatchTower's application architecture is mainnet-capable: payment-network values
 - Deployment transaction: `0x092fa744f302952ff59f50602ca86f3c131fbf9e36ea49eee87ce71216911547`.
 - The deployed runtime bytecode matches the reviewed build; `owner()` is `0x9cfd99ae73da2402f70c4198a3b3448a19bba68f`.
 - A `0.5 USD0` Firewall SDK canary completed, including payment verification and a confirmed `ScanRecorded` attestation: `0xc0d3748d09322bd46977d0d9789ccfebe50e678e9883a53e7cd3efdde150f371`.
-- A `1 USD0` Deep Scan SDK canary completed for Ethereum WETH, including report persistence and a confirmed `ScanRecorded` attestation: `0x377a16231420c6c8aa77c46b824025cbe8a193b99e391d3b2d8b7866eb75058a`.
+- A `1 USD0` Authorization canary completed for Ethereum WETH, including report persistence and a confirmed `ScanRecorded` attestation: `0x377a16231420c6c8aa77c46b824025cbe8a193b99e391d3b2d8b7866eb75058a`.
 - Both canaries used replay-protected payment records, settled ERC-20 transfers to the configured treasury, and the expected agent-wallet balance changes.
 - Rotated treasury / current registry owner target: `0xE4A3089Fc40C534DC4c628B7551e6f711fcCe1A1`.
 - Rotated agent-payment wallet: `0x1bF9f3D8643Ca416878837DF610c9FC8561067b7`.
@@ -19,9 +19,9 @@ WatchTower's application architecture is mainnet-capable: payment-network values
 - Replacement runtime hash: `0x84ed08ec9dde3cdc708ee3b6e27fcf19d1293be13d77e0e0e49ed8f7325e0e65`.
 - Replacement `owner()` is the rotated owner address: `0xE4A3089Fc40C534DC4c628B7551e6f711fcCe1A1`.
 - Replacement Firewall canary completed through the SDK with replay-protected settlement `0xbb88bc5c7a5614c422242c0dad241a45b768cb666ae209e39f30896d0652d25d`.
-- Replacement Deep Scan canary completed through the SDK with replay-protected settlement `0xd1f7f81893320db4363a8dfa72f96a445b9eb446902701211bc84487953e090c`.
-- Replacement Deep Scan registry attestation: `0x3f4220c0cc9e65b8765c2703366bebae4ad284d47f9799f04ae30a79f0182239`.
-- Replacement Deep Scan report hash: `5ce37c50d706691135c5851e3a5038399f5635f8628ab583ad08f49bffc40ae6`.
+- Replacement Authorization canary completed through the SDK with replay-protected settlement `0xd1f7f81893320db4363a8dfa72f96a445b9eb446902701211bc84487953e090c`.
+- Replacement Authorization registry attestation: `0x3f4220c0cc9e65b8765c2703366bebae4ad284d47f9799f04ae30a79f0182239`.
+- Replacement Authorization report hash: `5ce37c50d706691135c5851e3a5038399f5635f8628ab583ad08f49bffc40ae6`.
 - Replacement contract source verification completed through Sourcify with `exact_match`. Verification job: `809a97a8-2156-400b-ad48-2796d99c71f6`.
 - The service currently uses an owner-operated registry signer and OKX x402 facilitator settlement. It does not yet provide decentralized attestation generation.
 
@@ -44,10 +44,10 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [x] Confirm replacement deployed code exists and record the runtime hash.
 - [x] Confirm the replacement deployed bytecode matches the reviewed build artifact exactly.
 - [ ] Transfer `owner` from the deployment wallet to a production-controlled signer or multisig after deployment verification. Current owner `0xE4A...e1A1` is an EOA in the latest read-only check, not an on-chain multisig contract.
-- [x] Verify that the original intended signer could call `recordScan` through confirmed Firewall and Deep Scan attestations.
-- [x] Verify that the rotated signer can call `recordScan` through a confirmed Deep Scan attestation after replacement deployment.
-- [x] Submit and independently verify a real deep-scan registry transaction from the first deployed application.
-- [x] Submit and independently verify a real deep-scan registry transaction from the replacement deployed application.
+- [x] Verify that the original intended signer could call `recordScan` through confirmed Firewall and Authorization attestations.
+- [x] Verify that the rotated signer can call `recordScan` through a confirmed Authorization attestation after replacement deployment.
+- [x] Submit and independently verify a real Authorization registry transaction from the first deployed application.
+- [x] Submit and independently verify a real Authorization registry transaction from the replacement deployed application.
 
 ## 2. Network and Environment Configuration
 
@@ -62,7 +62,7 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [x] Set `MAINNET_USDT_ADDRESS` locally to the canonical X Layer Mainnet USD0 contract address.
 - [x] Set `MAINNET_PAYMENT_TOKEN_DECIMALS=6` locally and verify the value from the deployed ERC-20 contract.
 - [x] Set `PAYMENT_MIN_CONFIRMATIONS=2` locally.
-- [x] Test that facilitator settlement failures are rejected before scan processing.
+- [x] Test that facilitator settlement failures are rejected before Firewall or Authorization processing.
 - [x] Remove stale testnet/Vercel override values from the active local `.env.local` block.
 - [ ] Keep testnet and development values in separate Vercel environments or secret stores. Do not share a treasury, signer, or payment token between environments.
 - [x] Confirm that the active local mainnet variables do not point to `testrpc.xlayer.tech`, a testnet explorer, chain `1952`, or a test token.
@@ -74,8 +74,8 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [x] Fund the rotated production agent payment wallet with an approved operating balance and native OKB for gas.
 - [x] Confirm a real `0.5 USD0` firewall settlement was accepted exactly once, produced a scan, and could not be replayed against the first registry/treasury configuration.
 - [x] Repeat the real `0.5 USD0` firewall settlement canary with the rotated treasury, rotated agent wallet, and replacement registry.
-- [x] Confirm a real `1 USD0` deep-scan settlement completed only after the registry transaction was mined successfully against the first registry/treasury configuration.
-- [x] Repeat the real `1 USD0` deep-scan settlement canary with the rotated treasury, rotated agent wallet, and replacement registry.
+- [x] Confirm a real `1 USD0` Authorization settlement completed only after the registry transaction was mined successfully against the first registry/treasury configuration.
+- [x] Repeat the real `1 USD0` Authorization settlement canary with the rotated treasury, rotated agent wallet, and replacement registry.
 - [x] Confirm an incorrect token, wrong chain, failed settlement, wrong treasury, insufficient amount, malformed payment signature, and concurrent retry are all rejected or serialized correctly.
 - [x] Confirm concurrent retries of the same `paymentId` yield one completed result rather than duplicate scans or duplicate charge acceptance in local web tests.
 - [x] Confirm the payment record, compatibility settlement ledger, and revenue telemetry use the production Turso database.
@@ -122,7 +122,7 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 - [ ] Confirm MCP and REST issue identical mainnet payment challenges and cannot bypass payment, validation, or replay protection.
 - [ ] Test the browser Command Center free-scan and telemetry flow with the production X Layer Mainnet configuration.
 - [ ] Confirm wallet network-add/switch metadata, explorer links, balance preflight, token decimals, and error states use the configured mainnet values.
-- [ ] Confirm `/report/[scanHash]` and `/verify` show the mainnet explorer transaction and a real registry event after deployment.
+- [ ] Confirm `/report/[reportHash]` and `/verify` show the mainnet explorer transaction and a real registry event after deployment.
 - [ ] Replace any remaining release-facing references to testnet addresses, chain IDs, explorer URLs, or faucet instructions after the mainnet deployment has been verified.
 
 ## 8. Security Review and Release Validation
@@ -139,6 +139,6 @@ Do not describe WatchTower as **live on X Layer Mainnet**, turn on public paid t
 
 After the required checks are complete, the product can accurately say:
 
-> WatchTower is deployed on X Layer Mainnet. Agents can pay the configured ERC-20 token for threat intelligence, receive replay-protected scan results, and verify confirmed deep-scan attestations through the WatchTower registry.
+> WatchTower is deployed on X Layer Mainnet. Agents can pay the configured ERC-20 token for Firewall Scan or Execution Authorization, receive replay-protected results, and verify confirmed authorization attestations through the WatchTower registry.
 
 Until then, use **mainnet-ready**, **mainnet-targeted**, or **configured for X Layer Mainnet**. These accurately describe the architecture without implying that a real-funds deployment has already been completed.

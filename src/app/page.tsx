@@ -65,7 +65,7 @@ export default function Home() {
           </h1>
           
           <p className="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            WatchTower is an API-native intelligence oracle. We run low-latency, multi-layer threat scans to block honeypots and malicious contracts <strong className="text-white">before</strong> your agent signs the transaction.
+            WatchTower doesn&apos;t just tell agents what&apos;s safe. <strong className="text-white">It proves what they&apos;re allowed to do.</strong> Every autonomous action now carries a cryptographically verifiable execution authorization.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -94,9 +94,9 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 pb-24">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div>
-                <h2 className="text-3xl font-bold text-white mb-6">A security gate your agent can enforce before execution.</h2>
+                <h2 className="text-3xl font-bold text-white mb-6">Protect every autonomous decision.</h2>
                 <p className="text-slate-400 mb-8 leading-relaxed">
-                  No dashboards in the execution path. WatchTower pairs a machine-readable verdict with OKX x402 facilitator settlement, so agents can acquire threat intelligence per scan on X Layer Mainnet.
+                  Integrate through the REST API or MCP Server and receive a machine-readable execution decision before your agent acts.
                 </p>
                 
                 <div className="space-y-4 mb-8">
@@ -106,7 +106,7 @@ export default function Home() {
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-200">Synchronous API</h4>
-                      <p className="text-sm text-slate-500">Fast request-response checks for automated trading and risk agents.</p>
+                      <p className="text-sm text-slate-500">Fast request-response authorization for autonomous agents that need an execution decision before every trade.</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -115,7 +115,7 @@ export default function Home() {
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-200">Native MCP Server</h4>
-                      <p className="text-sm text-slate-500">Expose the same threat intelligence to MCP-compatible agent runtimes through one protected tool surface.</p>
+                      <p className="text-sm text-slate-500">Bring the same authorization flow to MCP-compatible agents with a single tool interface and identical execution logic.</p>
                     </div>
                   </div>
                 </div>
@@ -136,30 +136,20 @@ export default function Home() {
                   <pre>
                     <code className="text-slate-300">
 <span className="text-purple-400">import</span> {'{ WatchTowerClient }'} <span className="text-purple-400">from</span> <span className="text-emerald-400">&apos;okx-watchtower-middleware&apos;</span>;{'\n\n'}
-<span className="text-slate-500">{"// Pin automatic settlement to your X Layer Mainnet policy"}</span>{'\n'}
-<span className="text-purple-400">const</span> wt = <span className="text-purple-400">new</span> WatchTowerClient({'{'}{'\n'}
-{'  '}apiUrl: <span className="text-emerald-400">&apos;https://watchtowr.xyz&apos;</span>,{'\n'}
-{'  '}agentWallet: <span className="text-emerald-400">&apos;0xYourAgent...&apos;</span>,{'\n'}
-{'  '}chainId: <span className="text-purple-400">196</span>,{'\n'}
-{'  '}paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,{'\n'}
-{'  '}paymentPolicy: {'{'}{'\n'}
-{'    '}apiOrigin: <span className="text-emerald-400">&apos;https://watchtowr.xyz&apos;</span>,{'\n'}
-{'    '}chainId: <span className="text-purple-400">196</span>,{'\n'}
-{'    '}tokenAddress: process.env.MAINNET_USDT_ADDRESS,{'\n'}
-{'    '}tokenDecimals: <span className="text-purple-400">6</span>,{'\n'}
-{'    '}treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS,{'\n'}
-{'    '}maxAmount: <span className="text-emerald-400">&apos;1&apos;</span>,{'\n'}
-{'  }'}, {'\n'}
-{'}'});{'\n\n'}
+<span className="text-purple-400">const</span> wt = <span className="text-purple-400">new</span> WatchTowerClient({'{ ... }'});{'\n\n'}
 <span className="text-purple-400">async function</span> <span className="text-blue-400">executeTrade</span>(targetToken) {'{'}{'\n'}
-{'  '}<span className="text-slate-500">{"// 1. Run the Firewall Scan (Costs 0.5 USDT via x402)"}</span>{'\n'}
-{'  '}<span className="text-purple-400">const</span> intel = <span className="text-purple-400">await</span> wt.guardTransaction(targetToken);{'\n\n'}
-{'  '}<span className="text-slate-500">{"// 2. Enforce strict safety thresholds"}</span>{'\n'}
-{'  '}<span className="text-purple-400">if</span> (intel.recommendation === <span className="text-emerald-400">&apos;ABORT&apos;</span>) {'{'}{'\n'}
-{'    '}console.log(<span className="text-emerald-400">`Trade blocked. Score: ${'{'}intel.threatScore{'}'}`</span>);{'\n'}
+{'  '}<span className="text-slate-500">{"// 1. Request Execution Authorization (1 USDT via x402)"}</span>{'\n'}
+{'  '}<span className="text-purple-400">const</span> result = <span className="text-purple-400">await</span> wt.authorize({'{'}{'\n'}
+{'    '}action: <span className="text-emerald-400">&apos;swap&apos;</span>,{'\n'}
+{'    '}token: targetToken,{'\n'}
+{'  }'});{'\n\n'}
+{'  '}<span className="text-slate-500">{"// 2. Execute only after the verified permit gate"}</span>{'\n'}
+{'  '}<span className="text-purple-400">if</span> (!result.executable) {'{'}{'\n'}
+{'    '}console.log(<span className="text-emerald-400">`Execution blocked: ${'{'}result.decision{'}'}`</span>);{'\n'}
 {'    '}<span className="text-purple-400">return</span>;{'\n'}
 {'  }'}{'\n\n'}
-{'  '}<span className="text-slate-500">{"// 3. Safe to execute"}</span>{'\n'}
+{'  '}<span className="text-slate-500">{"// 3. Permit verified — execute this exact intent"}</span>{'\n'}
+{'  '}console.log(<span className="text-emerald-400">&apos;✓ Execution Authorization verified&apos;</span>);{'\n'}
 {'  '}<span className="text-purple-400">await</span> router.swap(targetToken);{'\n'}
 {'}'}
                     </code>
@@ -184,7 +174,7 @@ export default function Home() {
                 <div className="p-4 font-mono text-sm leading-relaxed">
                   <span className="text-slate-400">{'{'}</span><br/>
                   <span className="text-cyan-400 ml-4">&quot;action&quot;</span><span className="text-slate-400">: </span><span className="text-emerald-400">&quot;swap&quot;</span><span className="text-slate-400">,</span><br/>
-                  <span className="text-cyan-400 ml-4">&quot;target&quot;</span><span className="text-slate-400">: </span><span className="text-emerald-400">&quot;0x123...&quot;</span><br/>
+                  <span className="text-cyan-400 ml-4">&quot;token&quot;</span><span className="text-slate-400">: </span><span className="text-emerald-400">&quot;0x123...&quot;</span><br/>
                   <span className="text-slate-400">{'}'}</span>
                 </div>
               </div>
@@ -213,17 +203,17 @@ export default function Home() {
                 <ArrowRight className="h-6 w-6" />
               </div>
 
-              {/* Verdict */}
-              <div className="flex-1 w-full bg-slate-900/60 backdrop-blur-md border border-rose-500/30 rounded-xl overflow-hidden shadow-[0_0_20px_rgba(244,63,94,0.1)] group hover:shadow-[0_0_30px_rgba(244,63,94,0.2)] transition-all">
-                <div className="bg-rose-500/10 px-4 py-2 text-xs font-mono text-rose-400 border-b border-rose-500/20 flex items-center justify-between">
-                  <span>3. Verdict Payload</span>
-                  <Lock className="h-3.5 w-3.5 text-rose-400 group-hover:scale-110 transition-transform" />
+              {/* Execution Authorization */}
+              <div className="flex-1 w-full bg-slate-900/60 backdrop-blur-md border border-emerald-500/30 rounded-xl overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.1)] group hover:shadow-[0_0_30px_rgba(16,185,129,0.2)] transition-all">
+                <div className="bg-emerald-500/10 px-4 py-2 text-xs font-mono text-emerald-400 border-b border-emerald-500/20 flex items-center justify-between">
+                  <span>3. Execution Authorization</span>
+                  <Lock className="h-3.5 w-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
                 </div>
                 <div className="p-4 font-mono text-sm leading-relaxed">
                   <span className="text-slate-400">{'{'}</span><br/>
-                  <span className="text-rose-400 ml-4">&quot;recommendation&quot;</span><span className="text-slate-400">: </span><span className="text-rose-400">&quot;ABORT&quot;</span><span className="text-slate-400">,</span><br/>
-                  <span className="text-cyan-400 ml-4">&quot;score&quot;</span><span className="text-slate-400">: </span><span className="text-purple-400">92</span><span className="text-slate-400">,</span><br/>
-                  <span className="text-cyan-400 ml-4">&quot;reason&quot;</span><span className="text-slate-400">: </span><span className="text-emerald-400">&quot;Hidden Mint&quot;</span><br/>
+                  <span className="text-emerald-400 ml-4">&quot;decision&quot;</span><span className="text-slate-400">: </span><span className="text-emerald-400">&quot;AUTHORIZED&quot;</span><span className="text-slate-400">,</span><br/>
+                  <span className="text-cyan-400 ml-4">&quot;permit.id&quot;</span><span className="text-slate-400">: </span><span className="text-purple-400">&quot;permit_a1b2...&quot;</span><span className="text-slate-400">,</span><br/>
+                  <span className="text-cyan-400 ml-4">&quot;signature&quot;</span><span className="text-slate-400">: </span><span className="text-amber-400">&quot;0x1f3a...&quot;</span><br/>
                   <span className="text-slate-400">{'}'}</span>
                 </div>
               </div>
@@ -241,7 +231,7 @@ export default function Home() {
         <section className="max-w-7xl mx-auto px-4 py-24 animate-fade-in-up delay-400">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-white mb-4">Multi-Layered Threat Detection</h2>
-            <p className="text-slate-400 max-w-2xl mx-auto">Our engine runs four parallel analysis modules to build a comprehensive risk profile of any ERC-20 token in under a second.</p>
+            <p className="text-slate-400 max-w-2xl mx-auto">WatchTower combines live market, contract, holder, and activity signals into one decision your agent can use immediately.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -307,9 +297,9 @@ export default function Home() {
         {/* 5. Transparency & Receipts */}
         <section className="py-24 animate-fade-in-up delay-500">
           <div className="max-w-7xl mx-auto px-4 text-center">
-            <h2 className="text-3xl font-bold text-white mb-6">Cryptographic Proof for Every Decision.</h2>
+            <h2 className="text-3xl font-bold text-white mb-6">A receipt your users can trust.</h2>
             <p className="text-slate-400 max-w-2xl mx-auto mb-10">
-              When your agent blocks a trade or executes a risky swap, your users will ask why. WatchTower&apos;s Deep Scans automatically generate an immutable <code className="text-cyan-400 font-mono bg-cyan-400/10 px-1.5 py-0.5 rounded">scanHash</code> on X Layer. Serve these cryptographic receipts to your users to prove your agent acted on verifiable threat intelligence.
+              WatchTower authorizes execution with a verified Execution Permit, then anchors the decision on X Layer as an audit record. Your agent gets permission quickly, and your users get a receipt they can inspect.
             </p>
             
             <div className="inline-flex flex-col sm:flex-row justify-center gap-4">
@@ -330,21 +320,23 @@ export default function Home() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-4">API Pricing for Autonomous Scale</h2>
             <p className="text-slate-400 text-sm max-w-xl mx-auto mb-4">
-              WatchTower uses x402 machine-to-machine payments settled through the OKX facilitator. Pay purely for what your agents consume. No subscriptions.
+              Pay only for the checks your agents use. Firewall is built for frequent screening; Authorization is built for decisions that may move capital.
             </p>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-bold rounded-lg shadow-sm">
-              <Zap className="h-3.5 w-3.5" /> X Layer Mainnet-ready: payment policy, facilitator settlement, and attestation are network-configured.
-            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="p-8 rounded-3xl bg-slate-900/60 backdrop-blur-md border border-slate-700/50 flex flex-col h-full hover:border-slate-500/50 transition-colors shadow-lg">
-              <h3 className="text-lg font-bold text-slate-300 mb-1">Tier 2: Firewall</h3>
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-cyan-500/20 bg-cyan-500/10">
+                <Shield className="h-6 w-6 text-cyan-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-300 mb-1">Firewall</h3>
               <div className="text-3xl font-black text-white mb-6">0.5 USDT <span className="text-sm font-normal text-slate-500 font-mono">/ scan</span></div>
               <ul className="space-y-3 mb-8 text-sm text-slate-400 flex-grow">
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Instant cache-based threat score (0-100)</li>
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Recommendation (TRADE/CAUTION/ABORT)</li>
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Perfect for high-frequency trading bots</li>
+                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Fast</li>
+                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Lightweight</li>
+                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Low cost</li>
+                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Immediate verdict</li>
+                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-500 shrink-0" /> Designed for frequent checks</li>
               </ul>
             </div>
 
@@ -353,14 +345,18 @@ export default function Home() {
               <div className="absolute top-6 right-6 bg-cyan-500/10 text-cyan-400 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border border-cyan-500/20">
                 Popular
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Tier 1: Deep Scan</h3>
-              <div className="text-3xl font-black text-white mb-6">1.0 USDT <span className="text-sm font-normal text-slate-500 font-mono">/ scan</span></div>
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-500/10">
+                <Lock className="h-6 w-6 text-cyan-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">Authorization</h3>
+              <div className="text-3xl font-black text-white mb-6">1.0 USDT <span className="text-sm font-normal text-slate-500 font-mono">/ authorization</span></div>
               <ul className="space-y-3 mb-8 text-sm text-slate-300 flex-grow">
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-400 shrink-0" /> Includes everything in Firewall</li>
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-400 shrink-0" /> Full pre-execution threat report</li>
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-400 shrink-0" /> Generates a verifiable <code className="text-xs bg-slate-950 px-1 border border-slate-800 rounded font-mono text-cyan-400">scanHash</code></li>
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-400 shrink-0" /> Full detailed 4-module JSON payload</li>
-                <li className="flex items-center gap-2"><Shield className="h-4 w-4 text-cyan-400 shrink-0" /> On-chain Smart Contract Attestation</li>
+                <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-cyan-400 shrink-0" /> Full threat intelligence</li>
+                <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-cyan-400 shrink-0" /> Deep analysis</li>
+                <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-cyan-400 shrink-0" /> Policy evaluation</li>
+                <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-cyan-400 shrink-0" /> Signed execution permit</li>
+                <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-cyan-400 shrink-0" /> On-chain attestation</li>
+                <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-cyan-400 shrink-0" /> Built for autonomous execution</li>
               </ul>
             </div>
           </div>

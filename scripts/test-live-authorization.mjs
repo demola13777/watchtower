@@ -19,7 +19,7 @@ async function main() {
     throw new Error('AGENT_PAYMENT_KEY is missing in .env.local');
   }
 
-  console.log(`Executing real paid Deep Scan against ${API_URL}`);
+console.log(`Executing real paid Authorization against ${API_URL}`);
   console.log(`Target: ${TARGET_ADDRESS} on X Layer Mainnet (196)`);
   
   const client = new WatchTowerClient({
@@ -27,24 +27,28 @@ async function main() {
     agentWallet: AGENT_WALLET,
     paymentPrivateKey: PAYMENT_KEY,
     chainId: 196,
-    paymentRpcUrl: process.env.MAINNET_RPC_URL, // <-- Added to sync RPC nodes perfectly
+    paymentRpcUrl: process.env.MAINNET_RPC_URL,
     paymentPolicy: {
       apiOrigin: API_URL,
       chainId: 196,
       tokenAddress: TARGET_ADDRESS,
       treasuryAddress: process.env.MAINNET_TREASURY_ADDRESS,
-      maxAmount: '10', // Allow up to 10 USDT per request
+      maxAmount: '10',
     },
   });
 
   try {
-    const report = await client.deepScan(TARGET_ADDRESS, '196');
-    console.log('\n✅ Deep Scan Completed Successfully!');
-    console.log(JSON.stringify(report, null, 2));
+    const authorization = await client.authorize({
+      token: TARGET_ADDRESS,
+      chainId: '196',
+      action: 'canary_authorization',
+    });
+    console.log('\n✅ Authorization Completed Successfully!');
+    console.log(JSON.stringify(authorization, null, 2));
     
     console.log(`\nView attestation at: https://watchtowr.xyz/verify`);
   } catch (err) {
-    console.error('\n❌ Deep Scan Failed:', err.message);
+    console.error('\n❌ Authorization Failed:', err.message);
   }
 }
 

@@ -10,7 +10,7 @@ export default function ReportNotFound() {
         </div>
         <h1 className="text-2xl font-black text-white mb-3">Report Not Found</h1>
         <p className="text-slate-400 mb-8 text-sm leading-relaxed">
-          This scan report doesn&apos;t exist or the hash is invalid. Reports are generated when a deep scan completes successfully.
+          This authorization report doesn&apos;t exist or the hash is invalid. Reports are generated when Execution Authorization completes successfully.
         </p>
         <Link
           href="/"

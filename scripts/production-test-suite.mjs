@@ -12,7 +12,7 @@
 
 import { execSync } from 'child_process';
 
-const API_URL = process.env.WATCHTOWER_API_URL || 'http://localhost:3000';
+const API_URL = process.env.WATCHTOWER_API_URL || 'https://watchtowr.xyz';
 
 const steps = [
   {

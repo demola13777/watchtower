@@ -8,8 +8,8 @@ import { logger } from '@/lib/logger';
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://watchtowr.xyz').replace(/\/$/, '');
 
-export interface DeepScanReport {
-  reportType: 'DEEP_SCAN';
+export interface ExecutionAuthorizationCompatibilityReport {
+  reportType: 'EXECUTION_AUTHORIZATION_COMPATIBILITY' | 'DEEP_SCAN';
   tier: string;
   price: string;
   generatedAt: string;
@@ -84,7 +84,7 @@ export async function runFirewallScan(input: {
   });
 
   let txHash: string | null = null;
-  // Mainnet defaults to Deep Scan attestations only. Firewall attestations can
+  // Mainnet defaults to premium authorization attestations only. Firewall attestations can
   // be explicitly enabled once the registry signer and gas budget are operated.
   const recordFirewall = process.env.RECORD_FIREWALL_SCANS === 'true'
     || (process.env.NEXT_PUBLIC_NETWORK_ENV !== 'mainnet' && process.env.RECORD_FIREWALL_SCANS !== 'false');
@@ -141,7 +141,7 @@ export async function runDeepScan(input: {
   agentWallet?: string;
   chainResolution?: ChainResolution;
   skipAttestation?: boolean;
-}): Promise<DeepScanReport> {
+}): Promise<ExecutionAuthorizationCompatibilityReport> {
   const chainResolution = input.chainResolution ?? await resolveScanChain(input);
   const chainId = chainResolution.chainId;
   const agentWallet = input.agentWallet?.toLowerCase() ?? null;
@@ -149,19 +149,19 @@ export async function runDeepScan(input: {
 
   let txHash: string | null = null;
   if (input.skipAttestation) {
-    logger.scan('deep_scan_attestation_skipped', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
+    logger.scan('authorization_attestation_skipped', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
   } else {
     txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
     if (!txHash) {
-      logger.error('Deep scan on-chain attestation failed — returning report without attestation', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
+      logger.error('Authorization attestation failed — returning report without attestation', { tokenAddress: input.tokenAddress, chainId, scanHash: report.scanHash });
     } else {
-      logger.registry('deep_scan_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
+      logger.registry('authorization_attested', { tokenAddress: input.tokenAddress, chainId, txHash, scanHash: report.scanHash });
     }
   }
 
-  const deepReport: DeepScanReport = {
-    reportType: 'DEEP_SCAN',
-    tier: 'Tier 1 — Comprehensive Intelligence Report',
+  const authorizationReport: ExecutionAuthorizationCompatibilityReport = {
+    reportType: 'EXECUTION_AUTHORIZATION_COMPATIBILITY',
+    tier: 'Execution Authorization Compatibility Report',
     price: `${SCAN_PRICING_USDT.deep} USDT`,
     generatedAt: new Date().toISOString(),
     target: {
@@ -201,7 +201,7 @@ export async function runDeepScan(input: {
     txHash,
     agentWallet,
     tier: 'deep',
-    reportData: JSON.stringify(deepReport),
+    reportData: JSON.stringify(authorizationReport),
     timestamp: report.scanTimestamp,
   });
 
@@ -209,7 +209,7 @@ export async function runDeepScan(input: {
     await trackAgentMetrics(agentWallet, input.tokenAddress, chainId);
   }
 
-  return deepReport;
+  return authorizationReport;
 }
 
 function generateSummary(
