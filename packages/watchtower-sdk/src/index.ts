@@ -677,6 +677,10 @@ export interface ExecutionAuthorizationCompatibilityResponse {
     chain: string;
     status: string;
   };
+  /** Full signed Execution Permit returned by Authorization compatibility endpoints when one is issued. */
+  executionPermit?: ExecutionAuthorization | null;
+  /** Server-side local verification result for executionPermit. */
+  permitVerification?: AuthorizationVerification | null;
   recommendations: string[];
 }
 

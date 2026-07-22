@@ -271,6 +271,8 @@ export async function runAuthorization(input: AuthorizeInput): Promise<Authoriza
     authorization: authorization
       ? { id: authorization.id, action: authorization.action, executionHash: authorization.executionHash, expiresAt: authorization.expiresAt }
       : null,
+    executionPermit: authorization,
+    permitVerification: verification,
     policy: {
       decision,
       verdict,
