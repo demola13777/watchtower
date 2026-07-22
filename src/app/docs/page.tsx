@@ -17,6 +17,7 @@ import {
 import { CodeBlock } from "@/components/code-block";
 
 const GITHUB_URL = "https://github.com/demola13777/watchtower";
+const README_URL = `${GITHUB_URL}/blob/main/README.md`;
 
 export const metadata: Metadata = {
   title: "Developer Docs",
@@ -272,8 +273,8 @@ attestation.status // pending | confirmed | failed`}</CodeBlock>
             <Link href="/#integrate" className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-slate-800 border border-slate-800">
               Back to SDK section <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 px-6 py-3.5 text-sm font-bold text-white transition-colors hover:border-cyan-500/50 hover:bg-slate-900/50">
-              Open GitHub <GitBranch className="h-4 w-4" />
+            <Link href={README_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 px-6 py-3.5 text-sm font-bold text-white transition-colors hover:border-cyan-500/50 hover:bg-slate-900/50">
+              Read README on GitHub <GitBranch className="h-4 w-4" />
             </Link>
           </div>
         </div>
