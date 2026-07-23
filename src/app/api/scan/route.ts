@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
+import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentDiscoveryResponse, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
 import { ChainResolutionError, resolveScanChain, runFirewallScan } from '@/lib/scan-service';
 import { scanRequestSchema } from '@/lib/validation';
 
@@ -42,15 +42,8 @@ const firewallServiceInfo = {
   ],
 };
 
-export async function GET() {
-  return NextResponse.json(
-    {
-      error: 'Input required',
-      message: 'Send a POST request with tokenAddress to receive the x402 payment challenge for this service.',
-      ...firewallServiceInfo,
-    },
-    { status: 400 },
-  );
+export async function GET(req: Request) {
+  return paymentDiscoveryResponse(req, SCAN_PRICING_USDT.firewall, 'Tier 2 - API Firewall', firewallServiceInfo);
 }
 
 export async function HEAD() {

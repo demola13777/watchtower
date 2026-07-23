@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
+import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentDiscoveryResponse, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
 import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
 import { runAuthorization } from '@/lib/authorize-service';
 import { scanRequestSchema } from '@/lib/validation';
@@ -48,15 +48,8 @@ const authorizationCompatibilityInfo = {
  * Keeps existing OKX Marketplace endpoint wiring intact while returning the
  * evolved Permission to Execute report.
  */
-export async function GET() {
-  return NextResponse.json(
-    {
-      error: 'Input required',
-      message: 'Send a POST request with tokenAddress to receive the x402 payment challenge for this service.',
-      ...authorizationCompatibilityInfo,
-    },
-    { status: 400 },
-  );
+export async function GET(req: Request) {
+  return paymentDiscoveryResponse(req, SCAN_PRICING_USDT.deep, 'Execution Authorization', authorizationCompatibilityInfo);
 }
 
 export async function HEAD() {

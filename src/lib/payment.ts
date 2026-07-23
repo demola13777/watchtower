@@ -750,6 +750,47 @@ export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
   );
 }
 
+export async function paymentDiscoveryResponse(
+  request: Request,
+  costUsdt: number,
+  tier: string,
+  metadata: Record<string, unknown>,
+): Promise<NextResponse> {
+  const paymentRequired = await buildPaymentRequired(
+    request,
+    costUsdt,
+    `WatchTower ${tier} scan`,
+    {
+      paymentId: `discovery-${crypto.randomUUID()}`,
+      requestHash: createPaymentRequestHash({
+        endpoint: new URL(request.url).pathname,
+        tier,
+        discovery: true,
+      }),
+      tier,
+      discovery: 'true',
+    },
+  );
+
+  return NextResponse.json(
+    {
+      error: 'Payment Required',
+      message: 'This x402 service requires a POST request with business input before payment is signed.',
+      tier,
+      price: `${costUsdt} USDT0`,
+      inputRequired: true,
+      ...metadata,
+      paymentRequired,
+    },
+    {
+      status: 402,
+      headers: {
+        [PAYMENT_REQUIRED_HEADER]: encodePaymentRequired(paymentRequired),
+      },
+    },
+  );
+}
+
 export function paymentResponseHeader(receipt: PaymentReceipt): string {
   // For demo receipts, return a simple base64 JSON (not from the SDK)
   if (receipt.mode === 'demo') {
