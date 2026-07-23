@@ -144,7 +144,10 @@ export async function buildPaymentRequired(
     price: costUsdt, // Money type — plain number
     network,
     maxTimeoutSeconds: 600, // 10 minutes
-    extra,
+    extra: {
+      decimals: paymentNetwork.token.decimals,
+      ...extra,
+    },
   });
 
   // Build the full PaymentRequired response with resource info
