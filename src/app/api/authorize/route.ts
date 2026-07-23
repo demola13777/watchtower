@@ -13,6 +13,7 @@ export const maxDuration = 60;
 
 const authorizationServiceInfo = {
   ok: true,
+  inputRequired: true,
   service: 'Authorization',
   endpoint: '/api/authorize',
   method: 'POST',
@@ -24,6 +25,26 @@ const authorizationServiceInfo = {
     action: 'Autonomous action being authorized',
     chainId: 'Optional EVM chain id',
   },
+  fields: [
+    {
+      name: 'tokenAddress',
+      type: 'string',
+      description: 'EVM token contract address to authorize.',
+      required: true,
+    },
+    {
+      name: 'action',
+      type: 'string',
+      description: 'Autonomous action being authorized, for example swap.',
+      required: true,
+    },
+    {
+      name: 'chainId',
+      type: 'string',
+      description: 'Optional EVM chain id. If omitted, WatchTower attempts chain auto-detection.',
+      required: false,
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -37,7 +58,14 @@ const authorizationServiceInfo = {
 // execution authorization.
 // ---------------------------------------------------------------------------
 export async function GET() {
-  return NextResponse.json(authorizationServiceInfo);
+  return NextResponse.json(
+    {
+      error: 'Input required',
+      message: 'Send a POST request with tokenAddress and action to receive the x402 payment challenge for this service.',
+      ...authorizationServiceInfo,
+    },
+    { status: 400 },
+  );
 }
 
 export async function HEAD() {

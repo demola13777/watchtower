@@ -15,6 +15,7 @@ export const maxDuration = 60;
 // ---------------------------------------------------------------------------
 const firewallServiceInfo = {
   ok: true,
+  inputRequired: true,
   service: 'Firewall Scan',
   endpoint: '/api/scan',
   method: 'POST',
@@ -25,10 +26,31 @@ const firewallServiceInfo = {
     tokenAddress: 'EVM token contract address',
     chainId: 'Optional EVM chain id',
   },
+  fields: [
+    {
+      name: 'tokenAddress',
+      type: 'string',
+      description: 'EVM token contract address to scan.',
+      required: true,
+    },
+    {
+      name: 'chainId',
+      type: 'string',
+      description: 'Optional EVM chain id. If omitted, WatchTower attempts chain auto-detection.',
+      required: false,
+    },
+  ],
 };
 
 export async function GET() {
-  return NextResponse.json(firewallServiceInfo);
+  return NextResponse.json(
+    {
+      error: 'Input required',
+      message: 'Send a POST request with tokenAddress to receive the x402 payment challenge for this service.',
+      ...firewallServiceInfo,
+    },
+    { status: 400 },
+  );
 }
 
 export async function HEAD() {

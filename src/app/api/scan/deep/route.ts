@@ -13,6 +13,7 @@ export const maxDuration = 60;
 
 const authorizationCompatibilityInfo = {
   ok: true,
+  inputRequired: true,
   service: 'Authorization',
   endpoint: '/api/scan/deep',
   method: 'POST',
@@ -23,6 +24,20 @@ const authorizationCompatibilityInfo = {
     tokenAddress: 'EVM token contract address',
     chainId: 'Optional EVM chain id',
   },
+  fields: [
+    {
+      name: 'tokenAddress',
+      type: 'string',
+      description: 'EVM token contract address to authorize.',
+      required: true,
+    },
+    {
+      name: 'chainId',
+      type: 'string',
+      description: 'Optional EVM chain id. If omitted, WatchTower attempts chain auto-detection.',
+      required: false,
+    },
+  ],
   compatibility: 'This endpoint preserves the former Deep Scan marketplace wiring while returning the current Authorization experience.',
 };
 
@@ -34,7 +49,14 @@ const authorizationCompatibilityInfo = {
  * evolved Permission to Execute report.
  */
 export async function GET() {
-  return NextResponse.json(authorizationCompatibilityInfo);
+  return NextResponse.json(
+    {
+      error: 'Input required',
+      message: 'Send a POST request with tokenAddress to receive the x402 payment challenge for this service.',
+      ...authorizationCompatibilityInfo,
+    },
+    { status: 400 },
+  );
 }
 
 export async function HEAD() {
