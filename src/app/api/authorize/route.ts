@@ -11,6 +11,21 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const authorizationServiceInfo = {
+  ok: true,
+  service: 'Authorization',
+  endpoint: '/api/authorize',
+  method: 'POST',
+  payment: 'x402',
+  price: `${SCAN_PRICING_USDT.deep} USDT`,
+  description: 'Permission to Execute endpoint that analyzes risk, evaluates policy, and returns a verified Execution Permit when approved.',
+  requiredInput: {
+    tokenAddress: 'EVM token contract address',
+    action: 'Autonomous action being authorized',
+    chainId: 'Optional EVM chain id',
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Route Handler — Execution Authorization (1 USDT)
 //
@@ -21,6 +36,19 @@ export const maxDuration = 60;
 // Every autonomous action now carries a cryptographically verifiable
 // execution authorization.
 // ---------------------------------------------------------------------------
+export async function GET() {
+  return NextResponse.json(authorizationServiceInfo);
+}
+
+export async function HEAD() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 export async function POST(req: Request) {
   let claimedPaymentId: string | null = null;
   try {

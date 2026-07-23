@@ -11,6 +11,21 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const authorizationCompatibilityInfo = {
+  ok: true,
+  service: 'Authorization',
+  endpoint: '/api/scan/deep',
+  method: 'POST',
+  payment: 'x402',
+  price: `${SCAN_PRICING_USDT.deep} USDT`,
+  description: 'Legacy marketplace endpoint for Execution Authorization and signed Permission to Execute reports.',
+  requiredInput: {
+    tokenAddress: 'EVM token contract address',
+    chainId: 'Optional EVM chain id',
+  },
+  compatibility: 'This endpoint preserves the former Deep Scan marketplace wiring while returning the current Authorization experience.',
+};
+
 /**
  * POST /api/scan/deep
  * 
@@ -18,6 +33,19 @@ export const maxDuration = 60;
  * Keeps existing OKX Marketplace endpoint wiring intact while returning the
  * evolved Permission to Execute report.
  */
+export async function GET() {
+  return NextResponse.json(authorizationCompatibilityInfo);
+}
+
+export async function HEAD() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 export async function POST(req: Request) {
   let claimedPaymentId: string | null = null;
   try {

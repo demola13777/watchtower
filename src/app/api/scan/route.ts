@@ -13,6 +13,33 @@ export const maxDuration = 60;
 // ---------------------------------------------------------------------------
 // Route Handler — Tier 2: API Firewall (0.5 USDT)
 // ---------------------------------------------------------------------------
+const firewallServiceInfo = {
+  ok: true,
+  service: 'Firewall Scan',
+  endpoint: '/api/scan',
+  method: 'POST',
+  payment: 'x402',
+  price: `${SCAN_PRICING_USDT.firewall} USDT`,
+  description: 'Fast token risk check that returns a machine-readable verdict and threat score.',
+  requiredInput: {
+    tokenAddress: 'EVM token contract address',
+    chainId: 'Optional EVM chain id',
+  },
+};
+
+export async function GET() {
+  return NextResponse.json(firewallServiceInfo);
+}
+
+export async function HEAD() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 export async function POST(req: Request) {
   let claimedPaymentId: string | null = null;
   try {

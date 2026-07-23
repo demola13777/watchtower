@@ -24,6 +24,16 @@ export const dynamic = 'force-dynamic';
 // continue through the route duration when scheduled by Next.js after().
 export const maxDuration = 60;
 
+const mcpServiceInfo = {
+  ok: true,
+  service: 'WatchTower MCP',
+  endpoint: '/api/mcp',
+  protocol: 'MCP Streamable HTTP',
+  tools: ['scan_token', 'authorize_transaction', 'deep_scan_token'],
+  payment: 'x402',
+  description: 'MCP tool surface for Firewall Scan and Execution Authorization.',
+};
+
 type JsonRpcToolCall = {
   id?: unknown;
   method?: string;
@@ -251,6 +261,14 @@ export async function POST(req: Request): Promise<Response> {
 
 // Handle GET requests for SSE stream (optional, for streaming clients)
 export async function GET(req: Request): Promise<Response> {
+  const accept = req.headers.get('accept') ?? '';
+  if (!accept.includes('text/event-stream')) {
+    return new Response(JSON.stringify(mcpServiceInfo), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const server = createWatchTowerMcpServer();
 
@@ -267,6 +285,13 @@ export async function GET(req: Request): Promise<Response> {
     console.error('[WatchTower MCP] GET error:', error);
     return new Response('MCP server error', { status: 500 });
   }
+}
+
+export async function HEAD(): Promise<Response> {
+  return new Response(null, {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 // Handle DELETE requests for session cleanup
