@@ -113,8 +113,9 @@ export default function DocsPage() {
         <div className="max-w-4xl min-w-0 w-full">
           <header className="pb-14">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-bold uppercase tracking-widest text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)] animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <BookOpen className="h-3.5 w-3.5" />
-              X Layer Mainnet Developer Documentation
+              <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="sm:hidden">Developer Docs</span>
+              <span className="hidden sm:inline">X Layer Mainnet Developer Documentation</span>
             </div>
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 sm:text-5xl lg:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700">
               Put production-grade security in front of every autonomous trade.

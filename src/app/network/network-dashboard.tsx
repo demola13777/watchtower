@@ -217,7 +217,7 @@ export default function NetworkDashboard() {
               <Image src="/watchtower_logo.png" alt="WatchTower Logo" width={32} height={32} className="rounded-lg transition-all" />
               <span className="text-xl font-bold text-white">WatchTower</span>
             </Link>
-            <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-widest">
+            <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-widest hidden sm:inline">
               Network Explorer
             </span>
           </div>
@@ -227,7 +227,7 @@ export default function NetworkDashboard() {
                   <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${telemetry ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`}></span>
                   <span className={`relative inline-flex rounded-full h-2 w-2 ${telemetry ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
                 </span>
-                <span className="text-slate-400 text-xs">API Status: <span className={telemetry ? 'text-emerald-400' : 'text-rose-400'}>{telemetry ? 'Online' : 'Connecting...'}</span></span>
+                <span className="text-slate-400 text-xs"><span className="hidden sm:inline">API Status: </span><span className={telemetry ? 'text-emerald-400' : 'text-rose-400'}>{telemetry ? 'Online' : 'Connecting...'}</span></span>
               </div>
             </div>
         </div>
