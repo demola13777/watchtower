@@ -4,6 +4,7 @@ import { SCAN_PRICING_USDT } from '@/lib/config';
 import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader, type PaymentReceipt } from '@/lib/payment';
 import { scanRequestSchema, authorizeRequestSchema } from '@/lib/validation';
 import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
+import { type ChainResolution } from '@/lib/chain-resolver';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 
 // ---------------------------------------------------------------------------
@@ -79,7 +80,7 @@ function paymentHashArguments(argumentsValue: unknown): unknown {
   return paymentIdentityArguments;
 }
 
-async function requireMcpToolPayment(req: Request): Promise<{ response?: Response; receipt?: PaymentReceipt }> {
+async function requireMcpToolPayment(req: Request): Promise<{ response?: Response; receipt?: PaymentReceipt; resolvedChains?: Map<string, ChainResolution> }> {
   const payload = (await req.clone().json().catch(() => null)) as JsonRpcToolCall | JsonRpcToolCall[] | null;
   const calls = Array.isArray(payload) ? payload : payload ? [payload] : [];
   const paidToolCalls = calls.filter((call) => call.method === 'tools/call');
@@ -104,6 +105,8 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
     };
   }
 
+  let resolvedChains: Map<string, ChainResolution> | undefined;
+
   for (const call of paidToolCalls) {
     if (call.params?.name !== 'scan_token' && call.params?.name !== 'deep_scan_token' && call.params?.name !== 'authorize_transaction') continue;
     const schema = call.params?.name === 'authorize_transaction' ? authorizeRequestSchema : scanRequestSchema;
@@ -126,7 +129,9 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
     }
 
     try {
-      await resolveScanChain(parsed.data);
+      const resolved = await resolveScanChain(parsed.data);
+      if (!resolvedChains) resolvedChains = new Map();
+      resolvedChains.set(call.params!.name!, resolved);
     } catch (error) {
       const message = error instanceof ChainResolutionError
         ? error.message
@@ -162,7 +167,7 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
   );
 
   if (payment.ok) {
-    return { receipt: payment.receipt };
+    return { receipt: payment.receipt, resolvedChains };
   }
 
   return { response: paymentRequiredResponse(payment.failure) };
@@ -206,7 +211,7 @@ export async function POST(req: Request): Promise<Response> {
       claimedPaymentId = receipt.paymentId;
     }
 
-    const server = createWatchTowerMcpServer(receipt?.payer);
+    const server = createWatchTowerMcpServer(receipt?.payer, paymentResult.resolvedChains);
 
     // Create a stateless transport for this request
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -298,4 +303,18 @@ export async function HEAD(): Promise<Response> {
 export async function DELETE(): Promise<Response> {
   // Stateless mode — no sessions to clean up
   return new Response(null, { status: 405 });
+}
+
+// CORS preflight
+export async function OPTIONS(): Promise<Response> {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, HEAD, OPTIONS, DELETE',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-PAYMENT, PAYMENT-SIGNATURE',
+      'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
 }

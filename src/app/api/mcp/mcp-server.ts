@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SCAN_PRICING_USDT } from '@/lib/config';
 import { runFirewallScan, resolveScanChain, ChainResolutionError } from '@/lib/scan-service';
+import { type ChainResolution } from '@/lib/chain-resolver';
 import { runAuthorization } from '@/lib/authorize-service';
 import { mcpScanInputSchema, mcpAuthorizeInputSchema, scanRequestSchema, authorizeRequestSchema } from '@/lib/validation';
 
@@ -23,7 +24,7 @@ import { mcpScanInputSchema, mcpAuthorizeInputSchema, scanRequestSchema, authori
 //   4. Single source of truth for scoring logic
 // ---------------------------------------------------------------------------
 
-export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServer {
+export function createWatchTowerMcpServer(verifiedAgentWallet?: string, resolvedChains?: Map<string, ChainResolution>): McpServer {
   const server = new McpServer(
     {
       name: 'watchtower',
@@ -68,7 +69,7 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
       }
 
       try {
-        const chainResolution = await resolveScanChain(parsed.data);
+        const chainResolution = resolvedChains?.get('scan_token') ?? await resolveScanChain(parsed.data);
         const report = await runFirewallScan({
           ...parsed.data,
           agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? 'mcp_agent',
@@ -128,7 +129,7 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
       }
 
       try {
-        const chainResolution = await resolveScanChain(parsed.data);
+        const chainResolution = resolvedChains?.get('deep_scan_token') ?? await resolveScanChain(parsed.data);
         const authorization = await runAuthorization({
           ...parsed.data,
           agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? '0x0000000000000000000000000000000000000000',
@@ -192,7 +193,7 @@ export function createWatchTowerMcpServer(verifiedAgentWallet?: string): McpServ
       }
 
       try {
-        const chainResolution = await resolveScanChain(parsed.data);
+        const chainResolution = resolvedChains?.get('authorize_transaction') ?? await resolveScanChain(parsed.data);
         const result = await runAuthorization({
           ...parsed.data,
           agentWallet: verifiedAgentWallet ?? parsed.data.agentWallet ?? '0x0000000000000000000000000000000000000000',

@@ -94,7 +94,7 @@ interface SocialCache {
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const FETCH_TIMEOUT_MS = 8000;
+const FETCH_TIMEOUT_MS = 5000;
 const ATTESTATION_RECEIPT_TIMEOUT_MS = Number(process.env.ATTESTATION_RECEIPT_TIMEOUT_MS ?? 45_000);
 
 // ---------------------------------------------------------------------------

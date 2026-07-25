@@ -679,7 +679,22 @@ export async function claimPaymentProcessing(paymentId: string): Promise<Payment
   if (intent.status === 'completed' && intent.responsePayload) {
     return { state: 'completed', responsePayload: intent.responsePayload };
   }
-  if (intent.status === 'processing') return { state: 'processing' };
+  // Auto-recover payments stuck in 'processing' due to Vercel hard-kills.
+  // If a payment has been processing for over 5 minutes, reset it to 'settled'
+  // so the user can retry without being permanently locked out.
+  if (intent.status === 'processing') {
+    const PROCESSING_STALE_MS = 5 * 60 * 1000;
+    const settledAt = intent.settledAt ?? intent.createdAt ?? 0;
+    if (Date.now() - settledAt > PROCESSING_STALE_MS) {
+      await db.update(payments)
+        .set({ status: 'settled', failureReason: 'Auto-released: processing exceeded 5 minute timeout (likely serverless hard-kill).' })
+        .where(and(eq(payments.paymentId, paymentId), eq(payments.status, 'processing')));
+      logger.payment('processing_auto_released', { paymentId, staleDurationMs: Date.now() - settledAt });
+      // Fall through to claim below
+    } else {
+      return { state: 'processing' };
+    }
+  }
   if (intent.status !== 'settled') return { state: 'processing' };
 
   const claimed = await db.update(payments)

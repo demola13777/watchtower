@@ -1,3 +1,5 @@
+import { after } from 'next/server';
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { scans } from '@/lib/db/schema';
 import { resolveTokenChain, type ChainResolution } from '@/lib/chain-resolver';
@@ -83,14 +85,10 @@ export async function runFirewallScan(input: {
     unavailableModules,
   });
 
-  let txHash: string | null = null;
   // Mainnet defaults to premium authorization attestations only. Firewall attestations can
   // be explicitly enabled once the registry signer and gas budget are operated.
   const recordFirewall = process.env.RECORD_FIREWALL_SCANS === 'true'
     || (process.env.NEXT_PUBLIC_NETWORK_ENV !== 'mainnet' && process.env.RECORD_FIREWALL_SCANS !== 'false');
-  if (recordFirewall) {
-    txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
-  }
 
   await db.insert(scans).values({
     chainId,
@@ -98,7 +96,7 @@ export async function runFirewallScan(input: {
     threatScore: report.threatScore,
     recommendation: report.recommendation,
     scanHash: report.scanHash,
-    txHash,
+    txHash: null,
     agentWallet,
     tier: 'firewall',
     timestamp: report.scanTimestamp,
@@ -106,6 +104,42 @@ export async function runFirewallScan(input: {
 
   if (agentWallet) {
     await trackAgentMetrics(agentWallet, input.tokenAddress, chainId);
+  }
+
+  // Schedule on-chain attestation as non-blocking background work.
+  // The HTTP response returns immediately; the DB record is updated
+  // once the transaction confirms — same pattern as authorize-service.ts.
+  if (recordFirewall) {
+    after(async () => {
+      try {
+        const txHash = await submitScanProof(input.tokenAddress, chainId, report.scanHash, report.threatScore);
+        if (txHash) {
+          await db.update(scans)
+            .set({ txHash })
+            .where(eq(scans.scanHash, report.scanHash));
+          logger.registry('firewall_attested', {
+            tokenAddress: input.tokenAddress,
+            chainId,
+            txHash,
+            scanHash: report.scanHash,
+          });
+        } else {
+          logger.error('Firewall attestation failed — no txHash returned', {
+            tokenAddress: input.tokenAddress,
+            chainId,
+            scanHash: report.scanHash,
+          });
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'Unknown attestation error';
+        logger.error('Firewall attestation background task failed', {
+          tokenAddress: input.tokenAddress,
+          chainId,
+          scanHash: report.scanHash,
+          reason,
+        });
+      }
+    });
   }
 
   return {
@@ -126,7 +160,7 @@ export async function runFirewallScan(input: {
     reasoning: report.reasoning,
     verification: {
       scanHash: report.scanHash,
-      ...(txHash ? { txHash } : {}),
+      attestationStatus: recordFirewall ? 'pending' : 'disabled',
     },
     meta: {
       engine: 'WatchTower v1',
