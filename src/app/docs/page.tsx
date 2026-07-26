@@ -143,7 +143,6 @@ export default function DocsPage() {
 const wt = new WatchTowerClient({
   apiUrl: "https://watchtowr.xyz",
   agentWallet: "0xYourAgentWallet",
-  chainId: 196,
 });
 
 try {
@@ -176,11 +175,11 @@ try {
 const wt = new WatchTowerClient({
   apiUrl: "https://watchtowr.xyz",
   agentWallet: "0xYourAgentWallet",
-  chainId: 196,
   threshold: 70,
   paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,
   paymentPolicy: {
     apiOrigin: "https://watchtowr.xyz",
+    // Payment network, not the token scan chain.
     chainId: 196,
     tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
     tokenDecimals: 6,
@@ -238,12 +237,11 @@ POST /api/scan/deep   // compatibility alias
 
 {
   "tokenAddress": "0x...",
-  "chainId": "196",
   "agentWallet": "0x...",
   "action": "swap"
 }`}</CodeBlock>
             <p>
-              <InlineCode>chainId</InlineCode> is strongly recommended. If omitted, WatchTower attempts chain resolution and rejects ambiguous results before payment.
+              <InlineCode>chainId</InlineCode> is optional and refers to the token scan chain, not the x402 payment network. Omit it for auto-detection; provide it only when you already know the token deployment chain.
             </p>
           </Section>
 

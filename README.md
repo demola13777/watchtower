@@ -144,7 +144,7 @@ If a module is unavailable, WatchTower marks it unavailable, excludes its weight
 
 ### Chain Resolution
 
-`chainId` is a first-class input. If callers omit it, WatchTower attempts chain resolution using supported EVM networks. Ambiguous or fallback-only results are rejected before payment so users are not charged for a scan against the wrong chain.
+`chainId` is an optional token scan-chain override. Most callers should omit it and let WatchTower resolve the token across supported EVM networks. Use it only when you already know the token deployment chain. Payment still settles on the configured X Layer payment network.
 
 ### Policy Evaluation
 
@@ -216,11 +216,11 @@ import {
 const wt = new WatchTowerClient({
   apiUrl: "https://watchtowr.xyz",
   agentWallet: process.env.AGENT_WALLET!,
-  chainId: 196,
   paymentPrivateKey: process.env.AGENT_PAYMENT_KEY,
   paymentRpcUrl: process.env.MAINNET_RPC_URL,
   paymentPolicy: {
     apiOrigin: "https://watchtowr.xyz",
+    // Payment network, not the token scan chain.
     chainId: 196,
     tokenAddress: process.env.MAINNET_USDT_ADDRESS!,
     tokenDecimals: 6,
@@ -291,7 +291,8 @@ Use `guardTransaction()` when the agent only needs the fast Firewall verdict.
 
 ```ts
 const scan = await wt.guardTransaction("0xTokenAddress", {
-  chainId: 196,
+  // Optional token scan-chain override. Omit for auto-detection.
+  chainId: 1,
 });
 ```
 
@@ -379,12 +380,14 @@ PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>
 ```json
 {
   "tokenAddress": "0xTokenAddress",
-  "chainId": "196",
+  "chainId": "1",
   "agentWallet": "0xAgentWallet"
 }
 ```
 
 Returns a fast scan result with threat score, confidence, recommendation, reasoning, module details, and `scanHash` for compatibility with existing scan integrations.
+
+`chainId` is optional and refers to the token scan chain. It is not the x402 payment network.
 
 ### Authorization
 
@@ -397,7 +400,7 @@ PAYMENT-SIGNATURE: <base64-encoded PaymentPayload>
 ```json
 {
   "tokenAddress": "0xTokenAddress",
-  "chainId": "196",
+  "chainId": "1",
   "agentWallet": "0xAgentWallet",
   "action": "swap",
   "amountUsd": 250,
