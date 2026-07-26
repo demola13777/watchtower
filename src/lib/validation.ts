@@ -38,13 +38,13 @@ export const authorizeRequestSchema = z.object({
 
 export const mcpScanInputSchema = {
   tokenAddress: tokenAddressSchema.describe('The token contract address to scan (0x-prefixed, 40 hex chars).'),
-  chainId: chainIdSchema.describe('Optional EVM chain id override. If omitted, WatchTower auto-detects the chain.'),
+  chainId: chainIdSchema.describe('Optional token scan chain id override. If omitted, WatchTower auto-detects the chain. This is not the x402 payment network.'),
   agentWallet: tokenAddressSchema.optional().describe('Your agent wallet address for reputation tracking.'),
 };
 
 export const mcpAuthorizeInputSchema = {
   tokenAddress: tokenAddressSchema.describe('The token contract address to authorize (0x-prefixed, 40 hex chars).'),
-  chainId: chainIdSchema.describe('Optional EVM chain id override. If omitted, WatchTower auto-detects the chain.'),
+  chainId: chainIdSchema.describe('Optional token scan chain id override. If omitted, WatchTower auto-detects the chain. This is not the x402 payment network.'),
   agentWallet: tokenAddressSchema.optional().describe('Your agent wallet address for reputation tracking.'),
   action: z.string().trim().min(1).max(64).optional().default('transaction').describe('The intended action (e.g. "swap", "transfer", "approve"). Defaults to "transaction".'),
   amountUsd: z.number().positive().optional().describe('Optional USD value of the intended transaction.'),

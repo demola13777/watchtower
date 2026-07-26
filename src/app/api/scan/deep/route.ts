@@ -22,7 +22,7 @@ const authorizationCompatibilityInfo = {
   description: 'Legacy marketplace endpoint for Execution Authorization and signed Permission to Execute reports.',
   requiredInput: {
     tokenAddress: 'EVM token contract address',
-    chainId: 'Optional EVM chain id',
+    chainId: 'Optional token scan chain id; omit to auto-detect. Payments settle on X Layer separately.',
   },
   fields: [
     {
@@ -34,7 +34,7 @@ const authorizationCompatibilityInfo = {
     {
       name: 'chainId',
       type: 'string',
-      description: 'Optional EVM chain id. If omitted, WatchTower attempts chain auto-detection.',
+      description: 'Optional token scan chain id. If omitted, WatchTower attempts chain auto-detection. This is not the x402 payment network.',
       required: false,
     },
   ],

@@ -24,7 +24,7 @@ const firewallServiceInfo = {
   description: 'Fast token risk check that returns a machine-readable verdict and threat score.',
   requiredInput: {
     tokenAddress: 'EVM token contract address',
-    chainId: 'Optional EVM chain id',
+    chainId: 'Optional token scan chain id; omit to auto-detect. Payments settle on X Layer separately.',
   },
   fields: [
     {
@@ -36,7 +36,7 @@ const firewallServiceInfo = {
     {
       name: 'chainId',
       type: 'string',
-      description: 'Optional EVM chain id. If omitted, WatchTower attempts chain auto-detection.',
+      description: 'Optional token scan chain id. If omitted, WatchTower attempts chain auto-detection. This is not the x402 payment network.',
       required: false,
     },
   ],
