@@ -53,11 +53,12 @@ let _facilitatorClient: OKXFacilitatorClient | null = null;
 
 export function getFacilitatorClient(): OKXFacilitatorClient {
   if (!_facilitatorClient) {
+    const baseUrl = optionalEnv('OKX_BASE_URL', 'OKX_FACILITATOR_URL');
     _facilitatorClient = new OKXFacilitatorClient({
       apiKey: requireEnv('OKX_API_KEY'),
       secretKey: requireEnv('OKX_SECRET_KEY'),
       passphrase: requireEnv('OKX_PASSPHRASE'),
-      baseUrl: optionalEnv('OKX_BASE_URL', 'OKX_FACILITATOR_URL'),
+      ...(baseUrl ? { baseUrl } : {}),
       // syncSettle: true means the facilitator waits for on-chain confirmation
       // before returning, so we don't need to poll for settlement status.
       syncSettle: true,
