@@ -50,6 +50,9 @@ interface TelemetryScan {
   scanHash: string;
   agentWallet: string | null;
   tier: string | null;
+  canonicalTier?: string | null;
+  product?: 'Firewall' | 'Authorization' | 'Free';
+  reportUrl?: string | null;
   timestamp: number;
 }
 
@@ -93,6 +96,14 @@ interface ScanResult {
 
 function isAuthorizationTier(tier: string | null): boolean {
   return tier === 'authorize' || tier === 'deep';
+}
+
+function getScanProduct(scan: TelemetryScan): 'Firewall' | 'Authorization' | 'Free' {
+  if (scan.product === 'Firewall' || scan.product === 'Authorization' || scan.product === 'Free') {
+    return scan.product;
+  }
+  if (scan.agentWallet === 'web_dashboard') return 'Free';
+  return isAuthorizationTier(scan.canonicalTier ?? scan.tier) ? 'Authorization' : 'Firewall';
 }
 
 interface AuthorizationApiResult {
@@ -444,12 +455,12 @@ export default function NetworkDashboard() {
                    <div className="md:col-span-4 font-mono text-sm text-slate-300 break-all">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Target Contract</div>
                      {scan.tokenAddress}
-                     {isAuthorizationTier(scan.tier) && (
-                       <Link href={`/report/${scan.scanHash}`} className="text-[10px] text-cyan-500 mt-0.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:text-cyan-400">
+                     {getScanProduct(scan) === 'Authorization' && (
+                       <Link href={scan.reportUrl ?? `/report/${scan.scanHash}`} className="text-[10px] text-cyan-500 mt-0.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:text-cyan-400">
                          <ExternalLink className="h-2.5 w-2.5" /> View Report
                        </Link>
                      )}
-                     {!isAuthorizationTier(scan.tier) && (
+                     {getScanProduct(scan) !== 'Authorization' && (
                        <div className="text-[10px] text-slate-600 mt-0.5 break-all opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">Hash: {scan.scanHash.substring(0,32)}...</div>
                      )}
                    </div>
@@ -468,8 +479,8 @@ export default function NetworkDashboard() {
 
                    <div className="md:col-span-1">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Tier</div>
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${scan.agentWallet === 'web_dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : isAuthorizationTier(scan.tier) ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
-                        {scan.agentWallet === 'web_dashboard' ? 'Free' : isAuthorizationTier(scan.tier) ? 'Auth' : 'Firewall'}
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded whitespace-nowrap ${getScanProduct(scan) === 'Free' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : getScanProduct(scan) === 'Authorization' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
+                        {getScanProduct(scan)}
                       </span>
                    </div>
                    

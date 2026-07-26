@@ -70,6 +70,24 @@ export async function GET(req: Request) {
     ]);
 
     const revenue = Number(settledRevenue ?? 0);
+    const latestScansForDashboard = latestScans.map((scan: typeof latestScans[number]) => {
+      const canonicalTier = scan.tier;
+      const isAuthorization = canonicalTier === 'authorize' || canonicalTier === 'deep';
+
+      return {
+        ...scan,
+        canonicalTier,
+        // Older already-open dashboard tabs only understand the legacy premium
+        // tier value. Keep them truthful while preserving the canonical tier.
+        tier: canonicalTier === 'authorize' ? 'deep' : canonicalTier,
+        product: scan.agentWallet === 'web_dashboard'
+          ? 'Free'
+          : isAuthorization
+            ? 'Authorization'
+            : 'Firewall',
+        reportUrl: isAuthorization ? `/report/${scan.scanHash}` : null,
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -78,7 +96,7 @@ export async function GET(req: Request) {
         threatsBlocked,
         revenue,
         activeAgents,
-        latestScans, // H5: No longer includes reportData or txHash
+        latestScans: latestScansForDashboard, // H5: No longer includes reportData or txHash
         leaderboard: leaderboardRows,
       }
     });
