@@ -56,3 +56,18 @@ export const mcpAuthorizeInputSchema = {
 
 export type ScanRequestInput = z.infer<typeof scanRequestSchema>;
 export type AuthorizeRequestInput = z.infer<typeof authorizeRequestSchema>;
+
+export class InvalidJsonBodyError extends Error {
+  constructor() {
+    super('Invalid or missing JSON request body.');
+    this.name = 'InvalidJsonBodyError';
+  }
+}
+
+export async function parseJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    throw new InvalidJsonBodyError();
+  }
+}

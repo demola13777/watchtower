@@ -4,7 +4,7 @@ import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 import { SCAN_PRICING_USDT } from '@/lib/config';
 import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentDiscoveryResponse, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
 import { ChainResolutionError, resolveScanChain, runFirewallScan } from '@/lib/scan-service';
-import { scanRequestSchema } from '@/lib/validation';
+import { InvalidJsonBodyError, parseJsonBody, scanRequestSchema } from '@/lib/validation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,7 +58,7 @@ export async function HEAD() {
 export async function POST(req: Request) {
   let claimedPaymentId: string | null = null;
   try {
-    const input = scanRequestSchema.parse(await req.json());
+    const input = scanRequestSchema.parse(await parseJsonBody(req));
     const chainResolution = await resolveScanChain(input);
     // F2: Rate limit by IP first, then agentWallet fallback
     const rateLimitKey = getRateLimitKey(req, input.agentWallet);
@@ -112,6 +112,9 @@ export async function POST(req: Request) {
     console.error('Scan error:', error);
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Invalid request body', details: error.flatten() }, { status: 400 });
+    }
+    if (error instanceof InvalidJsonBodyError) {
+      return NextResponse.json({ error: 'Invalid request body', message: error.message }, { status: 400 });
     }
     if (error instanceof ChainResolutionError) {
       return NextResponse.json({ error: error.message }, { status: 422 });

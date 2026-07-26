@@ -5,7 +5,7 @@ import { SCAN_PRICING_USDT } from '@/lib/config';
 import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentDiscoveryResponse, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
 import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
 import { runAuthorization } from '@/lib/authorize-service';
-import { scanRequestSchema } from '@/lib/validation';
+import { InvalidJsonBodyError, parseJsonBody, scanRequestSchema } from '@/lib/validation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,7 +64,7 @@ export async function HEAD() {
 export async function POST(req: Request) {
   let claimedPaymentId: string | null = null;
   try {
-    const input = scanRequestSchema.parse(await req.json());
+    const input = scanRequestSchema.parse(await parseJsonBody(req));
     const chainResolution = await resolveScanChain(input);
     const rateLimitKey = getRateLimitKey(req, input.agentWallet);
     if (await isRateLimited(rateLimitKey)) {
@@ -120,6 +120,9 @@ export async function POST(req: Request) {
     console.error('Execution Authorization compatibility route error:', error);
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Invalid request body', details: error.flatten() }, { status: 400 });
+    }
+    if (error instanceof InvalidJsonBodyError) {
+      return NextResponse.json({ error: 'Invalid request body', message: error.message }, { status: 400 });
     }
     if (error instanceof ChainResolutionError) {
       return NextResponse.json({ error: error.message }, { status: 422 });
