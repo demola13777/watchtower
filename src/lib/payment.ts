@@ -759,20 +759,18 @@ export async function releasePaymentProcessing(paymentId: string, reason: string
 }
 
 export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
   if (failure.paymentRequired) {
     // Standard x402 v2 headers
     headers[PAYMENT_REQUIRED_HEADER] = encodePaymentRequired(failure.paymentRequired);
   }
 
+  // Return an empty JSON body to match the official OKX SDK middleware output.
+  // The payment challenge is carried entirely in the PAYMENT-REQUIRED header.
   return NextResponse.json(
-    {
-      error: failure.error,
-      message: failure.message,
-      tier: failure.tier,
-      price: failure.price,
-      paymentRequired: failure.paymentRequired,
-    },
+    {},
     {
       status: failure.status,
       headers,
@@ -784,7 +782,7 @@ export async function paymentDiscoveryResponse(
   request: Request,
   costUsdt: number,
   tier: string,
-  metadata: Record<string, unknown>,
+  _metadata: Record<string, unknown>,
 ): Promise<NextResponse> {
   const paymentRequired = await buildPaymentRequired(
     request,
@@ -802,19 +800,14 @@ export async function paymentDiscoveryResponse(
     },
   );
 
+  // Return an empty JSON body to match the official OKX SDK middleware output.
+  // The payment challenge is carried entirely in the PAYMENT-REQUIRED header.
   return NextResponse.json(
-    {
-      error: 'Payment Required',
-      message: 'This x402 service requires a POST request with business input before payment is signed.',
-      tier,
-      price: `${costUsdt} USDT0`,
-      inputRequired: true,
-      ...metadata,
-      paymentRequired,
-    },
+    {},
     {
       status: 402,
       headers: {
+        'Content-Type': 'application/json',
         [PAYMENT_REQUIRED_HEADER]: encodePaymentRequired(paymentRequired),
       },
     },
