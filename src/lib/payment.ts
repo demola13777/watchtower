@@ -22,6 +22,21 @@ const PAYMENT_RESPONSE_HEADER = 'PAYMENT-RESPONSE';
 const PAYMENT_INTENT_TTL_MS = 10 * 60 * 1000;
 const PAYMENT_SETTLING_STALE_MS = 2 * 60 * 1000;
 
+/**
+ * Check if a request carries any x402 payment signature header (v1 or v2).
+ * This is a cheap header-only check — no decoding, no DB lookup.
+ * Used by route handlers to decide whether a bad-body error should be
+ * returned as 402 (no payment yet) or 400 (paid but invalid input).
+ */
+export function hasPaymentSignature(request: Request): boolean {
+  return !!(
+    request.headers.get('PAYMENT-SIGNATURE')
+    ?? request.headers.get('payment-signature')
+    ?? request.headers.get('X-PAYMENT')
+    ?? request.headers.get('x-payment')
+  );
+}
+
 export interface PaymentRequest {
   request: Request;
   costUsdt: number;
