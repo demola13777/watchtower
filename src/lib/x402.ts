@@ -1,20 +1,15 @@
 /**
  * x402 Payment Server Singleton
  *
- * Initializes the OKX x402 payment infrastructure:
+ * Initializes the official OKX seller SDK payment infrastructure:
  *   1. OKXFacilitatorClient – talks to the OKX facilitator for verify + settle
  *   2. x402ResourceServer    – registered with ExactEvmScheme for X Layer (eip155:196)
- *
- * All imports use @okxweb3/x402-core (the base package) to avoid type
- * conflicts with @okxweb3/x402-evm which also depends on x402-core.
- * The @okxweb3/app-x402-core re-exports from a separate copy, causing
- * private-property type mismatches — so we import directly from x402-core.
  *
  * The server is initialized once at module load and reused across all requests.
  */
 
-import { OKXFacilitatorClient } from '@okxweb3/x402-core/facilitator';
-import { x402ResourceServer } from '@okxweb3/x402-core/server';
+import { OKXFacilitatorClient } from '@okxweb3/x402-core';
+import { x402ResourceServer } from '@okxweb3/x402-express';
 import {
   encodePaymentRequiredHeader,
   encodePaymentResponseHeader,
@@ -27,9 +22,11 @@ import type {
   PaymentPayload,
   PaymentRequired,
   PaymentRequirements,
+  Network,
+} from '@okxweb3/x402-express';
+import type {
   SettleResponse,
   VerifyResponse,
-  Network,
 } from '@okxweb3/x402-core/types';
 
 // ─── Environment ─────────────────────────────────────────────────────────────
@@ -42,6 +39,14 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function optionalEnv(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 // ─── OKX Facilitator Client ──────────────────────────────────────────────────
 
 let _facilitatorClient: OKXFacilitatorClient | null = null;
@@ -52,6 +57,7 @@ export function getFacilitatorClient(): OKXFacilitatorClient {
       apiKey: requireEnv('OKX_API_KEY'),
       secretKey: requireEnv('OKX_SECRET_KEY'),
       passphrase: requireEnv('OKX_PASSPHRASE'),
+      baseUrl: optionalEnv('OKX_BASE_URL', 'OKX_FACILITATOR_URL'),
       // syncSettle: true means the facilitator waits for on-chain confirmation
       // before returning, so we don't need to poll for settlement status.
       syncSettle: true,

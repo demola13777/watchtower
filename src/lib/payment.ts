@@ -11,11 +11,11 @@ import {
   encodePaymentRequired,
   encodePaymentResponse,
   getX402Network,
+  type PaymentRequirements,
   type PaymentRequired as X402PaymentRequired,
   type SettleResponse,
 } from '@/lib/x402';
 import { logger } from '@/lib/logger';
-import type { PaymentRequirements } from '@okxweb3/x402-core/types';
 
 const PAYMENT_REQUIRED_HEADER = 'PAYMENT-REQUIRED';
 const PAYMENT_RESPONSE_HEADER = 'PAYMENT-RESPONSE';
