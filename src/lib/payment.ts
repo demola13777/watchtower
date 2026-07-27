@@ -758,7 +758,20 @@ export async function releasePaymentProcessing(paymentId: string, reason: string
   logger.payment('processing_released', { paymentId, reason });
 }
 
-export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
+export async function paymentRequiredResponse(failure: PaymentFailure, request?: Request): Promise<NextResponse> {
+  // For browser clients, use the official SDK HTTP server to generate
+  // the HTML paywall page. This is what OKX's validator checks.
+  if (request) {
+    try {
+      const { sdkPaymentResponse, isBrowserRequest } = await import('./x402-http');
+      if (isBrowserRequest(request)) {
+        return await sdkPaymentResponse(request);
+      }
+    } catch {
+      // Fall through to manual response if SDK HTTP server is unavailable
+    }
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -784,6 +797,20 @@ export async function paymentDiscoveryResponse(
   tier: string,
   _metadata: Record<string, unknown>,
 ): Promise<NextResponse> {
+  // Use the official OKX SDK HTTP server for content negotiation.
+  // This generates HTML paywall for browser clients (Accept: text/html)
+  // and JSON with PAYMENT-REQUIRED header for API clients.
+  // This is required for OKX marketplace listing verification.
+  try {
+    const { sdkPaymentResponse } = await import('./x402-http');
+    return await sdkPaymentResponse(request);
+  } catch (sdkError) {
+    logger.payment('sdk_discovery_fallback', {
+      error: sdkError instanceof Error ? sdkError.message : String(sdkError),
+    });
+  }
+
+  // Fallback: manual response if SDK HTTP server is unavailable
   const paymentRequired = await buildPaymentRequired(
     request,
     costUsdt,
@@ -800,8 +827,6 @@ export async function paymentDiscoveryResponse(
     },
   );
 
-  // Return an empty JSON body to match the official OKX SDK middleware output.
-  // The payment challenge is carried entirely in the PAYMENT-REQUIRED header.
   return NextResponse.json(
     {},
     {
