@@ -170,7 +170,7 @@ async function requireMcpToolPayment(req: Request): Promise<{ response?: Respons
     return { receipt: payment.receipt, resolvedChains };
   }
 
-  return { response: await paymentRequiredResponse(payment.failure, req) };
+  return { response: paymentRequiredResponse(payment.failure) };
 }
 
 // Instantiate a new MCP server for each request.
