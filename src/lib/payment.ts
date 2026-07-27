@@ -759,14 +759,13 @@ export async function releasePaymentProcessing(paymentId: string, reason: string
 }
 
 export async function paymentRequiredResponse(failure: PaymentFailure, request?: Request): Promise<NextResponse> {
-  // For browser clients, use the official SDK HTTP server to generate
-  // the HTML paywall page. This is what OKX's validator checks.
+  // ALWAYS route through the official SDK HTTP server for ALL clients.
+  // The OKX marketplace validator checks that 402 responses are generated
+  // by the official SDK — not just for browsers, but for API clients too.
   if (request) {
     try {
-      const { sdkPaymentResponse, isBrowserRequest } = await import('./x402-http');
-      if (isBrowserRequest(request)) {
-        return await sdkPaymentResponse(request);
-      }
+      const { sdkPaymentResponse } = await import('./x402-http');
+      return await sdkPaymentResponse(request);
     } catch {
       // Fall through to manual response if SDK HTTP server is unavailable
     }
