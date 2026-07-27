@@ -26,9 +26,11 @@ import { logger } from './logger';
  */
 class NextJsAdapter {
   private url: URL;
+  private forceApi: boolean;
 
-  constructor(private req: Request) {
+  constructor(private req: Request, opts?: { forceApi?: boolean }) {
     this.url = new URL(req.url);
+    this.forceApi = opts?.forceApi ?? false;
   }
 
   getHeader(name: string): string | undefined {
@@ -48,10 +50,12 @@ class NextJsAdapter {
   }
 
   getAcceptHeader(): string {
+    if (this.forceApi) return 'application/json';
     return this.req.headers.get('accept') ?? '';
   }
 
   getUserAgent(): string {
+    if (this.forceApi) return 'x402-api-client';
     return this.req.headers.get('user-agent') ?? '';
   }
 
@@ -165,9 +169,25 @@ async function getHTTPResourceServer(): Promise<x402HTTPResourceServer> {
  */
 export async function sdkPaymentResponse(request: Request): Promise<NextResponse> {
   const httpServer = await getHTTPResourceServer();
-  const adapter = new NextJsAdapter(request);
   const url = new URL(request.url);
 
+  // Always get the JSON/API response first to extract the PAYMENT-REQUIRED header.
+  // The SDK only includes this header in non-browser responses, but the OKX validator
+  // needs it in ALL responses (including HTML) to verify SDK integration.
+  const apiAdapter = new NextJsAdapter(request, { forceApi: true });
+  const apiResult = await httpServer.processHTTPRequest({
+    adapter: apiAdapter,
+    path: url.pathname,
+    method: request.method,
+  });
+
+  // Extract the PAYMENT-REQUIRED header from the API response
+  const paymentRequiredHeader = apiResult.type === 'payment-error'
+    ? apiResult.response.headers?.['PAYMENT-REQUIRED'] ?? ''
+    : '';
+
+  // Now get the actual response (which may be HTML for browser clients)
+  const adapter = new NextJsAdapter(request);
   const result = await httpServer.processHTTPRequest({
     adapter,
     path: url.pathname,
@@ -177,14 +197,20 @@ export async function sdkPaymentResponse(request: Request): Promise<NextResponse
   if (result.type === 'payment-error') {
     const { response } = result;
 
+    // Build the base headers — always include PAYMENT-REQUIRED
+    const baseHeaders: Record<string, string> = {
+      ...response.headers,
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
+    };
+    if (paymentRequiredHeader && !baseHeaders['PAYMENT-REQUIRED']) {
+      baseHeaders['PAYMENT-REQUIRED'] = paymentRequiredHeader;
+    }
+
     if (response.isHtml) {
       return new NextResponse(response.body as string, {
         status: response.status,
-        headers: {
-          ...response.headers,
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
-        },
+        headers: baseHeaders,
       });
     }
 
@@ -192,11 +218,10 @@ export async function sdkPaymentResponse(request: Request): Promise<NextResponse
     // If the client sent Accept: text/html but has a non-Mozilla UA (e.g. OKX validator),
     // generate the HTML paywall ourselves using the same format the SDK uses.
     const accept = request.headers.get('accept') ?? '';
-    if (accept.includes('text/html') && response.headers?.['PAYMENT-REQUIRED']) {
-      const paymentRequired = response.headers['PAYMENT-REQUIRED'];
+    if (accept.includes('text/html') && paymentRequiredHeader) {
       let decoded: Record<string, unknown> = {};
       try {
-        decoded = JSON.parse(Buffer.from(paymentRequired, 'base64').toString('utf-8'));
+        decoded = JSON.parse(Buffer.from(paymentRequiredHeader, 'base64').toString('utf-8'));
       } catch { /* ignore */ }
 
       const description = (decoded?.resource as Record<string, unknown>)?.description ?? 'Protected Resource';
@@ -223,8 +248,8 @@ export async function sdkPaymentResponse(request: Request): Promise<NextResponse
             <p><strong>Amount:</strong> ${price} ${tokenName}</p>
             <div id="payment-widget" 
                  data-requirements='${JSON.stringify(decoded)}'
-                 style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
-              <p>To access this resource, include a valid payment in the <code>X-PAYMENT</code> header.</p>
+                 data-app-name=""
+                 data-testnet="false">
             </div>
           </div>
         </body>
@@ -233,21 +258,15 @@ export async function sdkPaymentResponse(request: Request): Promise<NextResponse
       return new NextResponse(html, {
         status: response.status,
         headers: {
-          ...response.headers,
+          ...baseHeaders,
           'Content-Type': 'text/html',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
         },
       });
     }
 
     return NextResponse.json(response.body ?? {}, {
       status: response.status,
-      headers: {
-        ...response.headers,
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
-      },
+      headers: baseHeaders,
     });
   }
 
