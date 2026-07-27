@@ -123,6 +123,14 @@ async function getHTTPResourceServer(): Promise<x402HTTPResourceServer> {
         accepts: deepAccepts,
         description: 'WatchTower Execution Authorization',
       },
+      'GET /api/authorize': {
+        accepts: deepAccepts,
+        description: 'WatchTower Execution Authorization',
+      },
+      'POST /api/authorize': {
+        accepts: deepAccepts,
+        description: 'WatchTower Execution Authorization',
+      },
       'POST /api/mcp': {
         accepts: mcpAccepts,
         description: 'WatchTower MCP Protocol',

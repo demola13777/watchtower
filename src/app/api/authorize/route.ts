@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { getRateLimitKey, isRateLimited } from '@/lib/api-utils';
 import { SCAN_PRICING_USDT } from '@/lib/config';
-import { claimPaymentProcessing, completePayment, createPaymentRequestHash, isDemoReceipt, paymentDiscoveryResponse, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
+import { claimPaymentProcessing, completePayment, createPaymentRequestHash, hasPaymentSignature, isDemoReceipt, paymentDiscoveryResponse, paymentRequiredResponse, releasePaymentProcessing, requirePayment, setPaymentResponseHeader } from '@/lib/payment';
 import { ChainResolutionError, resolveScanChain } from '@/lib/scan-service';
 import { runAuthorization } from '@/lib/authorize-service';
 import { authorizeRequestSchema, InvalidJsonBodyError, parseJsonBody } from '@/lib/validation';
@@ -126,10 +126,16 @@ export async function POST(req: Request) {
       await releasePaymentProcessing(claimedPaymentId, error instanceof Error ? error.message : 'Authorization processing failed.').catch(() => undefined);
     }
     console.error('Authorization error:', error);
-    if (error instanceof ZodError) {
-      return NextResponse.json({ error: 'Invalid request body', details: error.flatten() }, { status: 400 });
-    }
-    if (error instanceof InvalidJsonBodyError) {
+    if (error instanceof ZodError || error instanceof InvalidJsonBodyError) {
+      // If there's no payment signature, the client hasn't paid yet.
+      // Return 402 with the x402 challenge so they know how to pay.
+      if (!hasPaymentSignature(req)) {
+        return paymentDiscoveryResponse(req, SCAN_PRICING_USDT.deep, 'Execution Authorization', authorizationServiceInfo);
+      }
+      // If they DO have a payment signature but invalid input, return 400
+      if (error instanceof ZodError) {
+        return NextResponse.json({ error: 'Invalid request body', details: error.flatten() }, { status: 400 });
+      }
       return NextResponse.json({ error: 'Invalid request body', message: error.message }, { status: 400 });
     }
     if (error instanceof ChainResolutionError) {
