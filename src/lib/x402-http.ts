@@ -188,6 +188,59 @@ export async function sdkPaymentResponse(request: Request): Promise<NextResponse
       });
     }
 
+    // The SDK only returns HTML when UA includes "Mozilla".
+    // If the client sent Accept: text/html but has a non-Mozilla UA (e.g. OKX validator),
+    // generate the HTML paywall ourselves using the same format the SDK uses.
+    const accept = request.headers.get('accept') ?? '';
+    if (accept.includes('text/html') && response.headers?.['PAYMENT-REQUIRED']) {
+      const paymentRequired = response.headers['PAYMENT-REQUIRED'];
+      let decoded: Record<string, unknown> = {};
+      try {
+        decoded = JSON.parse(Buffer.from(paymentRequired, 'base64').toString('utf-8'));
+      } catch { /* ignore */ }
+
+      const description = (decoded?.resource as Record<string, unknown>)?.description ?? 'Protected Resource';
+      const accepts = decoded?.accepts as Array<Record<string, unknown>> | undefined;
+      const amount = accepts?.[0]?.amount as string | undefined;
+      const extra = accepts?.[0]?.extra as Record<string, unknown> | undefined;
+      const decimals = (extra?.decimals as number) ?? 6;
+      const price = amount ? `$${(Number(amount) / 10 ** decimals).toFixed(2)}` : 'N/A';
+      const tokenName = (extra?.name as string) ?? 'USDC';
+
+      const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Payment Required</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body>
+          <div style="max-width: 600px; margin: 50px auto; padding: 20px; font-family: system-ui, -apple-system, sans-serif;">
+            
+            <h1>Payment Required</h1>
+            <p><strong>Resource:</strong> ${description}</p>
+            <p><strong>Amount:</strong> ${price} ${tokenName}</p>
+            <div id="payment-widget" 
+                 data-requirements='${JSON.stringify(decoded)}'
+                 style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+              <p>To access this resource, include a valid payment in the <code>X-PAYMENT</code> header.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+      `;
+      return new NextResponse(html, {
+        status: response.status,
+        headers: {
+          ...response.headers,
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
+        },
+      });
+    }
+
     return NextResponse.json(response.body ?? {}, {
       status: response.status,
       headers: {
