@@ -29,12 +29,17 @@ const PAYMENT_SETTLING_STALE_MS = 2 * 60 * 1000;
  * returned as 402 (no payment yet) or 400 (paid but invalid input).
  */
 export function hasPaymentSignature(request: Request): boolean {
-  return !!(
+  if (
     request.headers.get('PAYMENT-SIGNATURE')
-    ?? request.headers.get('payment-signature')
-    ?? request.headers.get('X-PAYMENT')
-    ?? request.headers.get('x-payment')
-  );
+    || request.headers.get('payment-signature')
+    || request.headers.get('X-PAYMENT')
+    || request.headers.get('x-payment')
+  ) {
+    return true;
+  }
+
+  const auth = request.headers.get('Authorization') ?? request.headers.get('authorization');
+  return !!(auth && auth.toLowerCase().startsWith('payment '));
 }
 
 export interface PaymentRequest {

@@ -302,10 +302,17 @@ export async function verifyAndSettle(
  */
 export function extractPaymentPayload(request: Request): PaymentPayload | null {
   // Check for the standard x402 v2 header
-  const paymentSig = request.headers.get('PAYMENT-SIGNATURE')
+  let paymentSig = request.headers.get('PAYMENT-SIGNATURE')
     ?? request.headers.get('payment-signature')
     ?? request.headers.get('X-PAYMENT')
     ?? request.headers.get('x-payment');
+
+  if (!paymentSig) {
+    const auth = request.headers.get('Authorization') ?? request.headers.get('authorization');
+    if (auth && auth.toLowerCase().startsWith('payment ')) {
+      paymentSig = auth.substring(8).trim();
+    }
+  }
 
   if (!paymentSig) return null;
 
