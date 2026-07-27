@@ -208,6 +208,5 @@ export async function sdkPaymentResponse(request: Request): Promise<NextResponse
  */
 export function isBrowserRequest(request: Request): boolean {
   const accept = request.headers.get('accept') ?? '';
-  const ua = request.headers.get('user-agent') ?? '';
-  return accept.includes('text/html') && ua.includes('Mozilla');
+  return accept.includes('text/html');
 }
