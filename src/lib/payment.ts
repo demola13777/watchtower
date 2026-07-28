@@ -792,21 +792,16 @@ export async function paymentDiscoveryResponse(
 ): Promise<NextResponse> {
   void _metadata;
 
-  const paymentRequired = await buildPaymentRequired(
-    request,
-    costUsdt,
-    `WatchTower ${tier} scan`,
-    {
-      paymentId: `discovery-${crypto.randomUUID()}`,
-      requestHash: createPaymentRequestHash({
-        endpoint: new URL(request.url).pathname,
-        tier,
-        discovery: true,
-      }),
-      tier,
-      discovery: 'true',
-    },
-  );
+  // Use createPaymentIntent so the challenge is persisted to the database.
+  // Previously this built a stateless "discovery-" challenge that was never
+  // saved, causing 401 errors when the OKX CLI paid and replayed — the
+  // server couldn't find the payment intent.
+  const requestHash = createPaymentRequestHash({
+    endpoint: new URL(request.url).pathname,
+    tier,
+    discovery: true,
+  });
+  const paymentRequired = await createPaymentIntent(request, costUsdt, tier, requestHash);
 
   return NextResponse.json(
     {},
