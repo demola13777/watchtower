@@ -148,6 +148,10 @@ async function createPaymentIntent(
   );
 
   const now = Date.now();
+  // Discovery intents (empty requestHash) are created via GET but replayed
+  // as POST by the OKX CLI's task-402-pay. Store method as POST so the
+  // subsequent replay passes the method check in validateAcceptedRequirement.
+  const storedMethod = requestHash ? request.method.toUpperCase() : 'POST';
 
   await db.insert(payments).values({
     paymentId,
@@ -159,7 +163,7 @@ async function createPaymentIntent(
     scheme: 'exact',
     payTo: network.treasuryAddress.toLowerCase(),
     resource: new URL(request.url).pathname,
-    method: request.method.toUpperCase(),
+    method: storedMethod,
     requestHash: requestHash ?? '',
     requirement: JSON.stringify(paymentRequired),
     createdAt: now,
@@ -241,12 +245,18 @@ function validateAcceptedRequirement(input: {
 
   if (!acceptedPaymentId) return 'Payment challenge is missing a request-bound payment id.';
   if (acceptedPaymentId !== existingPayment.paymentId) return 'Payment id mismatch for this WatchTower request.';
-  if (existingPayment.requestHash !== (requestHash ?? '')) return 'Payment request hash mismatch. This x402 signature was created for a different WatchTower request.';
-  if (acceptedRequestHash !== (requestHash ?? '')) return 'Payment challenge request hash mismatch.';
+
+  // Discovery intents store an empty requestHash — they are compatible with
+  // any subsequent POST body. Only enforce hash matching when the stored
+  // intent has a non-empty hash (i.e. was created by a POST handler).
+  const isDiscoveryIntent = !existingPayment.requestHash;
+  if (!isDiscoveryIntent && existingPayment.requestHash !== (requestHash ?? '')) return 'Payment request hash mismatch. This x402 signature was created for a different WatchTower request.';
+  if (!isDiscoveryIntent && acceptedRequestHash !== (requestHash ?? '')) return 'Payment challenge request hash mismatch.';
+
   if (acceptedTier !== tier) return 'Payment challenge tier mismatch.';
   if (existingPayment.tier !== tier) return 'Payment intent tier mismatch.';
   if (existingPayment.resource !== pathname) return 'Payment resource mismatch.';
-  if (existingPayment.method !== method) return 'Payment method mismatch.';
+  if (!isDiscoveryIntent && existingPayment.method !== method) return 'Payment method mismatch.';
   if (storedChallenge?.resource?.url && storedChallenge.resource.url !== pathname) return 'Payment challenge resource mismatch.';
   if (accepted.scheme !== 'exact') return `Unsupported payment scheme: ${accepted.scheme}. Only "exact" is supported.`;
   if (accepted.network !== expectedNetwork) return `Payment network mismatch. Expected ${expectedNetwork}, got ${accepted.network}.`;
@@ -792,16 +802,13 @@ export async function paymentDiscoveryResponse(
 ): Promise<NextResponse> {
   void _metadata;
 
-  // Use createPaymentIntent so the challenge is persisted to the database.
-  // Previously this built a stateless "discovery-" challenge that was never
-  // saved, causing 401 errors when the OKX CLI paid and replayed — the
-  // server couldn't find the payment intent.
-  const requestHash = createPaymentRequestHash({
-    endpoint: new URL(request.url).pathname,
-    tier,
-    discovery: true,
-  });
-  const paymentRequired = await createPaymentIntent(request, costUsdt, tier, requestHash);
+  // Discovery intents use an empty requestHash so they're compatible with
+  // any subsequent POST replay body. The OKX CLI's task-402-pay obtains
+  // the 402 challenge via GET (x402-check) then replays as POST with a
+  // body — the requestHash would always differ. By storing an empty hash,
+  // we skip the hash comparison during validation while still enforcing
+  // paymentId, tier, network, amount, and on-chain signature checks.
+  const paymentRequired = await createPaymentIntent(request, costUsdt, tier, '');
 
   return NextResponse.json(
     {},
