@@ -765,6 +765,7 @@ export async function releasePaymentProcessing(paymentId: string, reason: string
 
 export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
   const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
   };
@@ -775,13 +776,7 @@ export function paymentRequiredResponse(failure: PaymentFailure): NextResponse {
   }
 
   return NextResponse.json(
-    {
-      error: failure.error,
-      message: failure.message,
-      tier: failure.tier,
-      price: failure.price,
-      paymentRequired: failure.paymentRequired,
-    },
+    {},
     {
       status: failure.status,
       headers,
@@ -795,6 +790,8 @@ export async function paymentDiscoveryResponse(
   tier: string,
   _metadata: Record<string, unknown>,
 ): Promise<NextResponse> {
+  void _metadata;
+
   const paymentRequired = await buildPaymentRequired(
     request,
     costUsdt,
@@ -812,16 +809,11 @@ export async function paymentDiscoveryResponse(
   );
 
   return NextResponse.json(
-    {
-      error: 'Payment Required',
-      message: `This endpoint requires payment of ${costUsdt} USDT for ${tier}.`,
-      tier,
-      price: `${costUsdt} USDT`,
-      paymentRequired,
-    },
+    {},
     {
       status: 402,
       headers: {
+        'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
         [PAYMENT_REQUIRED_HEADER]: encodePaymentRequired(paymentRequired),
