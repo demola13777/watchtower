@@ -443,11 +443,11 @@ export default function NetworkDashboard() {
              <div className="space-y-3">
                <div className="hidden lg:grid grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider border-b border-slate-800">
                  <div className="col-span-2">Action</div>
-                 <div className="col-span-3">Target Contract</div>
-                 <div className="col-span-1">Agent</div>
+                 <div className="col-span-4">Target Contract</div>
+                 <div className="col-span-2">Agent</div>
                  <div className="col-span-2">Threat</div>
-                 <div className="col-span-2">Tier</div>
-                 <div className="col-span-2 text-right">Time</div>
+                 <div className="col-span-1">Tier</div>
+                 <div className="col-span-1 text-right">Time</div>
                </div>
                
                {telemetry.latestScans.map((scan) => (
@@ -462,7 +462,7 @@ export default function NetworkDashboard() {
                      </div>
                    </div>
                    
-                   <div className="lg:col-span-3 font-mono text-sm text-slate-300 break-all">
+                   <div className="lg:col-span-4 font-mono text-sm text-slate-300 break-all">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Target Contract</div>
                      {scan.tokenAddress}
                      {getScanProduct(scan) === 'Authorization' && (
@@ -475,7 +475,7 @@ export default function NetworkDashboard() {
                      )}
                    </div>
                    
-                   <div className="lg:col-span-1 font-mono text-sm text-cyan-400 truncate">
+                   <div className="lg:col-span-2 font-mono text-sm text-cyan-400 break-all">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Agent</div>
                      {scan.agentWallet ? `${scan.agentWallet.substring(0,10)}...` : 'Unknown'}
                    </div>
@@ -487,14 +487,14 @@ export default function NetworkDashboard() {
                      </div>
                    </div>
 
-                   <div className="lg:col-span-2">
+                   <div className="lg:col-span-1">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Tier</div>
                       <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded whitespace-nowrap ${getScanProduct(scan) === 'Free' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : getScanProduct(scan) === 'Authorization' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
-                        {getScanProduct(scan) === 'Authorization' ? 'Auth' : getScanProduct(scan)}
+                        {getScanProduct(scan)}
                       </span>
                    </div>
                    
-                   <div className="lg:col-span-2 lg:text-right text-xs text-slate-500">
+                   <div className="lg:col-span-1 lg:text-right text-xs text-slate-500">
                      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Time</div>
                      {new Date(scan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                    </div>
