@@ -362,11 +362,9 @@ export default async function ReportPage({ params }: { params: Promise<{ hash: s
             <Link href="/network" className="text-slate-500 hover:text-cyan-400 transition-colors flex items-center gap-1">
               <span className="mb-0.5">←</span> Network Explorer
             </Link>
-            {txHash && (
-              <Link href={`/verify?tx=${txHash}`} className="text-slate-500 hover:text-emerald-400 transition-colors flex items-center gap-1">
+              <Link href={txHash ? `/verify?tx=${txHash}` : `/verify?tx=${hash}`} className="text-slate-500 hover:text-emerald-400 transition-colors flex items-center gap-1">
                 Verify This Scan <span className="mb-0.5">→</span>
               </Link>
-            )}
           </div>
           
         </div>
