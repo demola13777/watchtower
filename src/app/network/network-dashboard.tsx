@@ -451,9 +451,9 @@ export default function NetworkDashboard() {
                </div>
                
                {telemetry.latestScans.map((scan) => (
-                 <div key={scan.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 px-4 py-4 items-start lg:items-center rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-500/30 hover:bg-slate-900/80 transition-colors shadow-inner group">
-                   <div className="lg:col-span-2">
-                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Action</div>
+                 <div key={scan.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-start md:items-center rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-500/30 hover:bg-slate-900/80 transition-colors shadow-inner group">
+                   <div className="md:col-span-2">
+                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Action</div>
                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold ${scan.recommendation === 'ABORT' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' : scan.recommendation === 'CAUTION' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'}`}>
                        {scan.recommendation === 'ABORT' && <ShieldAlert className="h-3 w-3" />}
                        {scan.recommendation === 'CAUTION' && <ShieldAlert className="h-3 w-3" />}
@@ -462,40 +462,40 @@ export default function NetworkDashboard() {
                      </div>
                    </div>
                    
-                   <div className="lg:col-span-4 font-mono text-sm text-slate-300 break-all">
-                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Target Contract</div>
+                   <div className="md:col-span-4 font-mono text-sm text-slate-300 break-all">
+                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Target Contract</div>
                      {scan.tokenAddress}
                      {getScanProduct(scan) === 'Authorization' && (
-                       <Link href={scan.reportUrl ?? `/report/${scan.scanHash}`} className="text-[10px] text-cyan-500 mt-0.5 flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity hover:text-cyan-400">
+                       <Link href={scan.reportUrl ?? `/report/${scan.scanHash}`} className="text-[10px] text-cyan-500 mt-0.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:text-cyan-400">
                          <ExternalLink className="h-2.5 w-2.5" /> View Report
                        </Link>
                      )}
                      {getScanProduct(scan) !== 'Authorization' && (
-                       <div className="text-[10px] text-slate-600 mt-0.5 break-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">Hash: {scan.scanHash.substring(0,32)}...</div>
+                       <div className="text-[10px] text-slate-600 mt-0.5 break-all opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">Hash: {scan.scanHash.substring(0,32)}...</div>
                      )}
                    </div>
                    
-                   <div className="lg:col-span-2 font-mono text-sm text-cyan-400 break-all">
-                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Agent</div>
+                   <div className="md:col-span-2 font-mono text-sm text-cyan-400 break-all">
+                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Agent</div>
                      {scan.agentWallet ? `${scan.agentWallet.substring(0,10)}...` : 'Unknown'}
                    </div>
                    
-                   <div className="lg:col-span-2">
-                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Threat</div>
+                   <div className="md:col-span-2">
+                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Threat</div>
                      <div className={`text-lg font-bold ${scan.threatScore > 80 ? 'text-rose-500' : scan.threatScore > 40 ? 'text-amber-500' : 'text-emerald-500'}`}>
                        {scan.threatScore}<span className="text-xs text-slate-600 font-normal">/100</span>
                      </div>
                    </div>
 
-                   <div className="lg:col-span-1">
-                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Tier</div>
+                   <div className="md:col-span-1">
+                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Tier</div>
                       <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded whitespace-nowrap ${getScanProduct(scan) === 'Free' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : getScanProduct(scan) === 'Authorization' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'}`}>
-                        {getScanProduct(scan)}
+                        {getScanProduct(scan) === 'Authorization' ? 'Auth' : getScanProduct(scan)}
                       </span>
                    </div>
                    
-                   <div className="lg:col-span-1 lg:text-right text-xs text-slate-500">
-                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 lg:hidden">Time</div>
+                   <div className="md:col-span-1 md:text-right text-xs text-slate-500">
+                     <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 md:hidden">Time</div>
                      {new Date(scan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                    </div>
                  </div>
