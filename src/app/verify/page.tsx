@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Search, CheckCircle, XCircle, ExternalLink, Loader2, Fingerprint } from "lucide-react";
 import Link from 'next/link';
 import { createPublicClient, decodeEventLog, http, defineChain, parseAbiItem } from 'viem';
-import { REGISTRY_ADDRESS, REGISTRY_CHAIN_ID } from '@/lib/config';
+import { REGISTRY_CHAIN_ID } from '@/lib/config';
 
 const registryChain = defineChain({
   id: Number(REGISTRY_CHAIN_ID),
@@ -34,6 +34,7 @@ interface VerifiedScan {
   timestamp: number;
   txHash: string;
   blockNumber: bigint;
+  registryAddress: string;
 }
 
 type VerifyStatus = 'idle' | 'verified' | 'not_found';
@@ -48,16 +49,24 @@ export default function VerifyPage() {
   const [result, setResult] = useState<VerifiedScan | null>(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<VerifyStatus>('idle');
+  const [autoTriggered, setAutoTriggered] = useState(false);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      const tx = new URLSearchParams(window.location.search).get('tx');
-      if (tx && /^0x[a-fA-F0-9]{64}$/.test(tx)) {
-        setTxHash(tx);
-      }
-    }, 0);
-    return () => clearTimeout(timeout);
+    const tx = new URLSearchParams(window.location.search).get('tx');
+    if (tx && /^0x[a-fA-F0-9]{64}$/.test(tx)) {
+      setTxHash(tx);
+      setAutoTriggered(true);
+    }
   }, []);
+
+  // Auto-trigger verification when txHash is set from URL
+  useEffect(() => {
+    if (autoTriggered && txHash && !verifying) {
+      setAutoTriggered(false);
+      handleVerify();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTriggered, txHash]);
 
   const handleVerify = async () => {
     if (!txHash.match(/^0x[a-fA-F0-9]{64}$/)) {
@@ -87,10 +96,11 @@ export default function VerifyPage() {
         return;
       }
 
+      // Scan ALL logs for a ScanRecorded event — the event signature is unique
+      // to WatchTowerRegistry. This ensures verification works for attestations
+      // written to any registry deployment (current or historical).
       let verifiedScan: VerifiedScan | null = null;
       for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== REGISTRY_ADDRESS.toLowerCase()) continue;
-
         try {
           const decoded = decodeEventLog({
             abi: [scanRecordedEvent],
@@ -117,6 +127,7 @@ export default function VerifyPage() {
             timestamp: Number(args.timestamp),
             txHash,
             blockNumber: receipt.blockNumber,
+            registryAddress: log.address,
           };
           break;
         } catch {
@@ -263,7 +274,11 @@ export default function VerifyPage() {
                   <div className="font-mono text-xs text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800 break-all">
                     {result.scanHash}
                   </div>
-                  <div className="text-sm text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <div className="mt-2 text-xs text-slate-500 mb-1">Registry Contract</div>
+                  <div className="font-mono text-xs text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800 break-all">
+                    {result.registryAddress}
+                  </div>
+                  <div className="mt-2 text-sm text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800">
                     {new Date(result.timestamp * 1000).toISOString().replace('T', ' ').substring(0, 19) + ' UTC'}
                     <div className="text-xs text-slate-500 mt-1">Block #{result.blockNumber.toString()}</div>
                   </div>
