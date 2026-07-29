@@ -164,10 +164,20 @@ export default function NetworkDashboard() {
     const timeout = setTimeout(fetchTelemetry, 0);
     const interval = setInterval(fetchTelemetry, 10000);
     const clock = setInterval(() => setNow(Date.now()), 30000);
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchTelemetry();
+        setNow(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       clearTimeout(timeout);
       clearInterval(interval);
       clearInterval(clock);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchTelemetry]);
 
